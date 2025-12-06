@@ -1,0 +1,88 @@
+═══════════════════════════════════════════════════════════════
+  ROWDATUL IIMAAN FEE MANAGEMENT - DATABASE & LOGIN SETUP
+═══════════════════════════════════════════════════════════════
+
+STEP 1: CONFIGURE DATABASE CONNECTION
+───────────────────────────────────────────────────────────────
+
+1. Open: backend/.env
+
+2. Update DATABASE_URL with your connection string:
+
+   For Neon DB:
+   DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require
+
+   For Local PostgreSQL:
+   DATABASE_URL=postgresql://postgres:password@localhost:5432/rowdatul_iimaan
+
+3. Save the file
+
+
+STEP 2: SETUP DATABASE & CREATE ADMIN USER
+───────────────────────────────────────────────────────────────
+
+Run this command:
+
+   cd backend
+   npm run setup-db
+
+This will:
+   ✅ Test database connection
+   ✅ Create all tables
+   ✅ Create admin user
+
+
+STEP 3: TEST CONNECTION (Optional)
+───────────────────────────────────────────────────────────────
+
+   cd backend
+   npm run test-connection
+
+
+STEP 4: START THE APPLICATION
+───────────────────────────────────────────────────────────────
+
+Terminal 1 - Backend:
+   cd backend
+   npm run dev
+
+Terminal 2 - Frontend:
+   cd frontend
+   npm run dev
+
+
+STEP 5: LOGIN
+───────────────────────────────────────────────────────────────
+
+1. Open browser: http://localhost:3000
+
+2. Login with:
+   Username: admin
+   Password: admin123
+
+3. ⚠️ Change password after first login!
+
+
+═══════════════════════════════════════════════════════════════
+  TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+❌ "DATABASE_URL not found"
+   → Check backend/.env file exists
+   → Run: cd backend && npm run check-env
+
+❌ "Connection refused"
+   → Database server not running
+   → Check DATABASE_URL host/port
+
+❌ "Invalid username or password"
+   → Check database credentials in DATABASE_URL
+
+❌ "Database does not exist"
+   → Create database: CREATE DATABASE rowdatul_iimaan;
+
+✅ Need help? Check SETUP_DATABASE.md
+
+═══════════════════════════════════════════════════════════════
+
+

@@ -1,0 +1,476 @@
+Act as a senior full-stack engineer.
+I want you to design and generate a complete school fee management system called "Rowdatul Iimaan Fee Management System" using the following tech stack:
+
+Frontend: ReactJS + Vite + TailwindCSS
+
+Backend: Node.js + Express
+
+Database: Neon DB (PostgreSQL)
+
+1. Main Purpose of the System
+
+The system is used to manage and track monthly fee payments for parents who pay school fees for their children.
+Each parent has:
+
+Full Name
+
+Phone Number
+
+Number of children studying in the school
+
+Total monthly fee amount to be paid (for all children together)
+
+The system must:
+
+Store parent information
+
+Manage monthly fee cycles
+
+Collect payments for specific months
+
+Handle partial payments, outstanding balances, and advance (prepaid) payments
+
+Show a clear fee history and generate receipts
+
+Provide dashboards and reports with charts, filters, and export options.
+
+2. Authentication & User Management
+
+Create a Login page for staff:
+
+Fields: Username / Email, Password
+
+Simple authentication with JWT or session
+
+User roles (at least): Admin, Cashier
+
+Admin can manage users (add, edit, disable users)
+
+Each transaction should store which user collected the payment.
+
+The login page must:
+
+Look modern and clean
+
+Show the school logo (Rowdatul Iimaan) at the top
+
+Be fully responsive (mobile, tablet, desktop)
+
+3. Parent / Payer Management
+
+Create a Parents module with:
+
+Ability to add a parent manually
+
+Ability to import parents from Excel/CSV in bulk
+
+Data fields:
+
+id
+
+parent_name
+
+phone_number
+
+number_of_children
+
+monthly_fee_amount (total monthly fee for all children)
+
+created_at
+
+updated_at
+
+On the Parents page:
+
+Show a table with search and filters
+
+Columns: Parent Name, Phone, Children Count, Monthly Fee, Current Outstanding, Current Month Status (Paid / Unpaid / Partial / Advanced)
+
+Allow Edit and View Fee History per parent.
+
+4. Monthly Fee Setup (Month Setup Module)
+
+There must be a "Month Setup" feature to start a new month’s billing.
+
+On the Month Setup page, the user should:
+
+Choose the year and month (e.g., March 2026) using a calendar-like selector or month dropdown.
+
+Click a button like "Start New Month".
+
+When a new month is created:
+
+For every parent:
+
+The system should bring forward any unpaid amounts from previous months.
+
+If the parent had partial payment last month, the remaining balance should be marked as carried forward.
+
+If the parent did not pay anything last month, the full last month amount becomes outstanding and is carried forward.
+
+If the parent previously paid in advance (advance payment for future months), the system must not charge them again for the months they already prepaid. The prepaid months should reduce their payable amount until those months are exhausted.
+
+Business rules:
+
+A parent cannot be charged double for a month they already fully paid.
+
+A parent who has advance payment should not receive new due amounts until all their advance months are consumed.
+
+For every month, you must keep track of:
+
+monthly_fee
+
+carried_forward_amount (from old debts / previous months)
+
+total_due_this_month
+
+amount_paid_this_month
+
+outstanding_after_payment
+
+5. Collect Monthly Fee (Payment Collection)
+
+Create a "Collect Monthly Fee" page:
+
+At the top, allow the user to select:
+
+The active month (e.g., "November 2025")
+
+Below, show a search box or quick filter where:
+
+When a phone number is typed, the system auto-fills/suggests the parent (search by phone or name).
+
+Once a parent is selected, show:
+
+Parent Name
+
+Phone Number
+
+Number of Children
+
+Monthly Fee
+
+Carried Forward Amount (if any)
+
+Total Due for the selected month
+
+History summary (previous outstanding if needed)
+
+On the payment form:
+
+The user can choose:
+
+Pay this current month
+
+Pay for past months that are still unpaid
+
+Pay advance months (pre-pay future months)
+
+When the user clicks something like "Advance Payment", allow them to:
+
+Select how many months to pay in advance (e.g., 2 months, 3 months)
+
+The system calculates the total amount for selected months and marks those months as paid in advance.
+
+Important constraints:
+
+A parent cannot pay the same month twice.
+If the month is already fully paid, show an error like:
+"Fee for this month is already fully paid. Only outstanding or advance payments are allowed."
+
+If the parent already paid advance months, the system must not create extra due for those months.
+
+If a parent makes a partial payment, it should be clearly recorded as Partial and the remaining balance becomes Outstanding.
+
+After saving a payment:
+
+Create a transaction record in the database.
+
+Update the status of the month for that parent (Paid / Partial / Unpaid).
+
+Generate a receipt object that can be viewed later.
+
+6. Payment Status & Filters
+
+On the main fee collection/overview pages, add filters:
+
+Paid
+
+Unpaid
+
+Outstanding
+
+Partial
+
+Also show:
+
+Total Collected This Month
+
+Total Outstanding This Month
+
+Total Partial This Month
+
+Total Advance (existing prepaid amounts and remaining value)
+
+These summary numbers should be visible on the dashboard and be recalculated based on the active month.
+
+7. Fee History & Receipts
+
+For each parent, create a "Fee History" section/page:
+
+Show a table of all transactions:
+
+Date
+
+Month/Year the payment belongs to
+
+Amount paid
+
+Payment type (Normal / Partial / Advance / Carry Forward Payment)
+
+Collected by (User)
+
+Status after payment (Paid / Partial / Outstanding)
+
+For each transaction row, there must be a "View Receipt" button.
+
+The Receipt View must show:
+
+School name & logo (Rowdatul Iimaan)
+
+Parent name, phone number
+
+Month (or months) the payment covers
+
+Amount paid, breakdown (monthly fee, carried forward, advance)
+
+Remaining balance (if any)
+
+Date and time of payment
+
+The user (staff) who collected the payment
+
+The exact SMS text that was or will be sent to the parent.
+
+The receipt must be:
+
+Viewable on screen
+
+Downloadable as PDF
+
+Printable
+
+Also, allow downloading full history as Excel for a specific parent.
+
+8. SMS Text Handling (No actual SMS integration required)
+
+When a payment is collected:
+
+Generate an SMS-style message text such as:
+"Dear [ParentName], you have paid [Amount] for [Month/Months] at Rowdatul Iimaan School. Remaining balance: [Balance]. Thank you."
+
+Save this message text together with the transaction record.
+
+On the parent profile’s month view, allow staff to copy the SMS text and paste it manually into a phone.
+
+Do not implement real SMS gateway, just generate and store the message.
+
+9. Exports (Excel & PDF)
+
+Implement export features:
+
+On the month overview, allow:
+
+Export all fee records for that month as Excel (with columns: Parent Name, Phone, Monthly Fee, Paid Amount, Outstanding, Status).
+
+On reports, allow:
+
+Export summary reports to Excel.
+
+On fee history and receipts:
+
+Download as PDF.
+
+10. Reports & Dashboard
+
+Create a modern dashboard with charts and cards showing:
+
+Select Month (and Year) at the top.
+
+KPIs:
+
+Total Collected (for selected month)
+
+Total Outstanding (debts not yet paid)
+
+Total Partial (number of parents with partial payments)
+
+Total Advance (total value of prepaid months)
+
+Charts:
+
+Bar chart: Collection per month across the year
+
+Pie or donut chart: distribution of Paid vs Unpaid vs Partial for the selected month
+
+Line chart: Monthly collection trend over the year
+
+Dashboard UI Requirements:
+
+Use beautiful cards, icons, and clean typography
+
+Use TailwindCSS for styling
+
+Fully responsive design
+
+Left sidebar with navigation:
+
+Dashboard
+
+Parents
+
+Collect Fee
+
+Month Setup
+
+Reports
+
+Users Management
+
+Settings
+
+11. Database Design (Neon PostgreSQL)
+
+Propose and implement a clean relational schema. At minimum include tables:
+
+users
+
+parents
+
+billing_months
+
+parent_month_fee (parent’s fee status per month)
+
+payments
+
+payment_items (if needed to split payments into normal / carried forward / advance)
+
+Ensure the schema supports:
+
+Multiple months
+
+Carry forward balances
+
+Advance payments
+
+Partial payments
+
+Safe constraints to prevent double-charging the same month.
+
+12. Backend API
+
+Implement RESTful endpoints such as (examples, you may refine):
+
+POST /auth/login
+
+GET /me
+
+GET /parents
+
+POST /parents
+
+PUT /parents/:id
+
+POST /parents/import
+
+POST /month-setup (create new billing month and initialize parent-month records)
+
+GET /months
+
+GET /fees?month=YYYY-MM
+
+POST /payments (create a new payment, handle all business rules)
+
+GET /parents/:id/history
+
+GET /payments/:id/receipt
+
+GET /reports/summary?month=YYYY-MM
+
+GET /reports/export-excel?month=YYYY-MM
+
+Make sure API responses are clean JSON, and include all data needed for the React frontend.
+
+13. Frontend Structure (React + Vite + Tailwind)
+
+Use a modern frontend structure:
+
+React Router for pages
+
+Layout with sidebar + top bar
+
+Pages:
+
+Login
+
+Dashboard
+
+Parents List + Add/Edit Parent
+
+Month Setup
+
+Collect Fee
+
+Fee Status (with filters)
+
+Reports
+
+Users Management
+
+Profile / Settings
+
+Use:
+
+Reusable components (Cards, Tables, Filters, Modals, Buttons, Inputs)
+
+Form validation and friendly error messages
+
+Loading and empty states
+
+14. UI/UX Requirements
+
+Make the design modern, clean, and professional.
+
+Use TailwindCSS utility classes properly.
+
+Use nice icons (e.g., from Heroicons or similar).
+
+All pages must be fully responsive for mobile, tablet, laptop, and desktop.
+
+Keep the color theme suitable for a school management app.
+
+15. What I Want From You
+
+Design the database schema.
+
+Design the REST API.
+
+Generate sample code structure for:
+
+Backend (Node.js + Express + Neon/PostgreSQL)
+
+Frontend (React + Vite + TailwindCSS)
+
+Show example implementations for:
+
+Month setup logic
+
+Payment collection logic (including partial, outstanding, and advance payment rules)
+
+Dashboard summary & charts
+
+Fee history and receipt generation (including a simple PDF generation example if possible)
+
+Make sure the logic strictly follows all business rules described above.
+
+If something is unclear, make reasonable assumptions and continue, but keep the system simple, clean, and easy to extend.
