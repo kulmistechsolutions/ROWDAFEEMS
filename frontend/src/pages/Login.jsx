@@ -12,6 +12,12 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    if (!username || !password) {
+      toast.error('Please enter username and password')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -19,7 +25,18 @@ export default function Login() {
       toast.success('Login successful!')
       navigate('/')
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Login failed')
+      console.error('Login error:', error)
+      if (error.response?.status === 401) {
+        toast.error('Invalid username or password')
+      } else if (error.response?.status === 405) {
+        toast.error('Server configuration error. Please contact administrator.')
+      } else if (!error.response) {
+        toast.error('Cannot connect to server. Please check your connection or contact administrator.')
+      } else if (error.response?.data?.error) {
+        toast.error(error.response.data.error)
+      } else {
+        toast.error('Login failed. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

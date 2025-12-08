@@ -48,15 +48,36 @@ export default function MonthSetup() {
   const fetchMonths = async () => {
     try {
       const response = await api.get('/months')
-      setMonths(response.data)
+      setMonths(response.data || [])
     } catch (error) {
-      toast.error('Failed to fetch months')
+      console.error('Fetch months error:', error)
+      if (error.response?.status === 401) {
+        toast.error('Session expired. Please login again.')
+      } else if (!error.response) {
+        toast.error('Cannot connect to server. Please check your connection.')
+      } else {
+        toast.error('Failed to fetch months')
+      }
+      setMonths([])
     }
   }
 
   const handleSetup = async () => {
+    // Validate inputs
     if (!selectedYear || !selectedMonth) {
       toast.error('Please select year and month')
+      return
+    }
+
+    // Validate year range
+    if (selectedYear < 2000 || selectedYear > 2100) {
+      toast.error('Year must be between 2000 and 2100')
+      return
+    }
+
+    // Validate month range
+    if (selectedMonth < 1 || selectedMonth > 12) {
+      toast.error('Please select a valid month')
       return
     }
 
@@ -74,8 +95,8 @@ export default function MonthSetup() {
     try {
       setLoading(true)
       const response = await api.post('/months/setup', {
-        year: selectedYear,
-        month: selectedMonth
+        year: parseInt(selectedYear),
+        month: parseInt(selectedMonth)
       })
       toast.success('Month setup completed successfully!')
       fetchMonths()
@@ -83,7 +104,16 @@ export default function MonthSetup() {
       setSelectedYear(new Date().getFullYear())
       setSelectedMonth(new Date().getMonth() + 1)
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to setup month')
+      console.error('Month setup error:', error)
+      if (error.response?.data?.error) {
+        toast.error(error.response.data.error)
+      } else if (error.message) {
+        toast.error(`Failed to setup month: ${error.message}`)
+      } else if (!error.response) {
+        toast.error('Network error: Cannot connect to server. Please check your connection.')
+      } else {
+        toast.error('Failed to setup month. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
