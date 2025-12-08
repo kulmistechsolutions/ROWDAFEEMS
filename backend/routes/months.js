@@ -194,6 +194,77 @@ router.post('/setup', authenticateToken, async (req, res) => {
   }
 });
 
+// Delete a billing month (with cascade delete of related records)
+router.delete('/:monthId', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { monthId } = req.params;
+    
+    // Check if month exists
+    const monthCheck = await client.query(
+      'SELECT * FROM billing_months WHERE id = $1',
+      [monthId]
+    );
+    
+    if (monthCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Month not found' });
+    }
+    
+    const month = monthCheck.rows[0];
+    
+    // Check if month is active
+    if (month.is_active) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: 'Cannot delete active month. Please activate another month first.' 
+      });
+    }
+    
+    // Check if there are any payments for this month
+    const paymentsCheck = await client.query(
+      'SELECT COUNT(*) as count FROM payments WHERE billing_month_id = $1',
+      [monthId]
+    );
+    
+    const paymentCount = parseInt(paymentsCheck.rows[0].count);
+    
+    // Delete will cascade to:
+    // - parent_month_fee (ON DELETE CASCADE)
+    // - payments (ON DELETE CASCADE)
+    // - payment_items (ON DELETE CASCADE via payments)
+    
+    // Delete the month (cascade will handle related records)
+    await client.query(
+      'DELETE FROM billing_months WHERE id = $1',
+      [monthId]
+    );
+    
+    await client.query('COMMIT');
+    
+    // Emit real-time update via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('month:deleted', { month_id: monthId });
+      io.emit('reports:updated');
+    }
+    
+    res.json({ 
+      message: 'Month deleted successfully',
+      deleted_payments: paymentCount
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Delete month error:', error);
+    res.status(500).json({ error: 'Failed to delete month' });
+  } finally {
+    client.release();
+  }
+});
+
 // Get fees for a specific month
 router.get('/:monthId/fees', authenticateToken, async (req, res) => {
   try {

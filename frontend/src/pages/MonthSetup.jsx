@@ -2,13 +2,20 @@ import { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useSocket } from '../contexts/SocketContext'
-import { CalendarIcon, PlayIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, PlayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 export default function MonthSetup() {
   const [months, setMonths] = useState([])
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [loading, setLoading] = useState(false)
+  const [deletingMonth, setDeletingMonth] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmAnswers, setDeleteConfirmAnswers] = useState({
+    question1: '',
+    question2: '',
+    question3: ''
+  })
   const { socket } = useSocket()
 
   useEffect(() => {
@@ -24,10 +31,17 @@ export default function MonthSetup() {
       toast.success('New month created in real-time!', { icon: '📅' })
     }
 
+    const handleMonthDeleted = (data) => {
+      fetchMonths()
+      toast.success('Month deleted in real-time!', { icon: '🗑️' })
+    }
+
     socket.on('month:created', handleMonthCreated)
+    socket.on('month:deleted', handleMonthDeleted)
 
     return () => {
       socket.off('month:created', handleMonthCreated)
+      socket.off('month:deleted', handleMonthDeleted)
     }
   }, [socket])
 
@@ -70,6 +84,61 @@ export default function MonthSetup() {
       setSelectedMonth(new Date().getMonth() + 1)
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to setup month')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteClick = (month) => {
+    setDeletingMonth(month)
+    setShowDeleteConfirm(true)
+    setDeleteConfirmAnswers({ question1: '', question2: '', question3: '' })
+  }
+
+  const handleDeleteConfirm = async () => {
+    const month = deletingMonth
+    const monthName = `${monthNames[month.month - 1]} ${month.year}`
+    
+    // Validate all 3 questions are answered correctly
+    const correctAnswers = {
+      question1: monthName.toLowerCase(),
+      question2: 'delete',
+      question3: 'yes'
+    }
+    
+    const userAnswers = {
+      question1: deleteConfirmAnswers.question1.toLowerCase().trim(),
+      question2: deleteConfirmAnswers.question2.toLowerCase().trim(),
+      question3: deleteConfirmAnswers.question3.toLowerCase().trim()
+    }
+    
+    // Check all answers
+    if (userAnswers.question1 !== correctAnswers.question1) {
+      toast.error('Question 1: Please type the exact month name to confirm')
+      return
+    }
+    
+    if (userAnswers.question2 !== correctAnswers.question2) {
+      toast.error('Question 2: Please type "DELETE" to confirm')
+      return
+    }
+    
+    if (userAnswers.question3 !== correctAnswers.question3) {
+      toast.error('Question 3: Please type "YES" to confirm')
+      return
+    }
+    
+    // All answers correct, proceed with deletion
+    try {
+      setLoading(true)
+      await api.delete(`/months/${month.id}`)
+      toast.success(`Month ${monthName} deleted successfully`)
+      fetchMonths()
+      setShowDeleteConfirm(false)
+      setDeletingMonth(null)
+      setDeleteConfirmAnswers({ question1: '', question2: '', question3: '' })
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to delete month')
     } finally {
       setLoading(false)
     }
@@ -175,6 +244,7 @@ export default function MonthSetup() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -200,6 +270,17 @@ export default function MonthSetup() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(month.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      {!month.is_active && (
+                        <button
+                          onClick={() => handleDeleteClick(month)}
+                          className="text-red-600 hover:text-red-900 transition-colors"
+                          title="Delete Month"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -236,10 +317,111 @@ export default function MonthSetup() {
                   {month.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>
+              {!month.is_active && (
+                <button
+                  onClick={() => handleDeleteClick(month)}
+                  className="mt-3 w-full btn btn-outline text-sm py-2 text-red-600 hover:bg-red-50 border-red-300 flex items-center justify-center gap-2"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  Delete Month
+                </button>
+              )}
             </div>
           ))
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && deletingMonth && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-red-600">⚠️ Delete Month Confirmation</h2>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setDeletingMonth(null)
+                  setDeleteConfirmAnswers({ question1: '', question2: '', question3: '' })
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <p className="text-sm font-semibold text-red-900 mb-2">
+                You are about to delete: <span className="font-bold">{monthNames[deletingMonth.month - 1]} {deletingMonth.year}</span>
+              </p>
+              <p className="text-xs text-red-800">
+                This will permanently delete all fee records and payments for this month. This action cannot be undone!
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Question 1: Type the month name to confirm ({monthNames[deletingMonth.month - 1]} {deletingMonth.year})
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmAnswers.question1}
+                  onChange={(e) => setDeleteConfirmAnswers({ ...deleteConfirmAnswers, question1: e.target.value })}
+                  className="input w-full"
+                  placeholder={`Type: ${monthNames[deletingMonth.month - 1]} ${deletingMonth.year}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Question 2: Type "DELETE" to confirm deletion
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmAnswers.question2}
+                  onChange={(e) => setDeleteConfirmAnswers({ ...deleteConfirmAnswers, question2: e.target.value })}
+                  className="input w-full"
+                  placeholder="Type: DELETE"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Question 3: Type "YES" if you understand this cannot be undone
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmAnswers.question3}
+                  onChange={(e) => setDeleteConfirmAnswers({ ...deleteConfirmAnswers, question3: e.target.value })}
+                  className="input w-full"
+                  placeholder="Type: YES"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setDeletingMonth(null)
+                  setDeleteConfirmAnswers({ question1: '', question2: '', question3: '' })
+                }}
+                className="flex-1 btn btn-outline"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={loading}
+                className="flex-1 btn bg-red-600 hover:bg-red-700 text-white"
+              >
+                {loading ? 'Deleting...' : 'Delete Month'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
