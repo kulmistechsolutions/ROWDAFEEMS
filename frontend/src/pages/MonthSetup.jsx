@@ -302,7 +302,11 @@ export default function MonthSetup() {
                       {new Date(month.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                      {!month.is_active && (
+                      {month.is_active ? (
+                        <span className="text-gray-400 text-xs" title="Cannot delete active month">
+                          Active
+                        </span>
+                      ) : (
                         <button
                           onClick={() => handleDeleteClick(month)}
                           className="text-red-600 hover:text-red-900 transition-colors"
