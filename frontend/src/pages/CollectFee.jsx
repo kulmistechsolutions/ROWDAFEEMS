@@ -460,126 +460,158 @@ export default function CollectFee() {
         </div>
       )}
 
-      {/* Parent Info & Payment Form */}
+      {/* Parent Info & Payment Form - Modal Popup */}
       {selectedParent && parentFee && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {/* Parent Information */}
-          <div className="card p-4 sm:p-6">
-            <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Parent Information</h2>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Parent Name</p>
-                <p className="text-base sm:text-lg font-semibold break-words">{selectedParent.parent_name}</p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Phone Number</p>
-                <p className="text-base sm:text-lg font-semibold break-all">{selectedParent.phone_number}</p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Number of Children</p>
-                <p className="text-base sm:text-lg font-semibold">{selectedParent.number_of_children}</p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Monthly Fee</p>
-                <p className="text-base sm:text-lg font-semibold">${parseFloat(selectedParent.monthly_fee_amount).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Carried Forward</p>
-                <p className="text-base sm:text-lg font-semibold text-orange-600">
-                  ${parseFloat(parentFee.carried_forward_amount || 0).toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Total Due</p>
-                <p className="text-xl sm:text-2xl font-bold text-primary-600">
-                  ${parseFloat(parentFee.total_due_this_month || 0).toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Status</p>
-                <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold inline-block mt-1 ${
-                  parentFee.status === 'paid' ? 'bg-green-100 text-green-800' :
-                  parentFee.status === 'partial' ? 'bg-orange-100 text-orange-800' :
-                  parentFee.status === 'advanced' ? 'bg-blue-100 text-blue-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {parentFee.status}
-                </span>
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto"
+          onClick={clearSelection}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto my-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex justify-between items-center z-10">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Collect Payment</h2>
+              <button
+                onClick={clearSelection}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                title="Close"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                {/* Parent Information */}
+                <div className="card p-4 sm:p-6">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4">Parent Information</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Parent Name</p>
+                      <p className="text-base sm:text-lg font-semibold break-words">{selectedParent.parent_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Phone Number</p>
+                      <p className="text-base sm:text-lg font-semibold break-all">{selectedParent.phone_number}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Number of Children</p>
+                      <p className="text-base sm:text-lg font-semibold">{selectedParent.number_of_children}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Monthly Fee</p>
+                      <p className="text-base sm:text-lg font-semibold">${parseFloat(selectedParent.monthly_fee_amount).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Carried Forward</p>
+                      <p className="text-base sm:text-lg font-semibold text-orange-600">
+                        ${parseFloat(parentFee.carried_forward_amount || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Total Due</p>
+                      <p className="text-xl sm:text-2xl font-bold text-primary-600">
+                        ${parseFloat(parentFee.total_due_this_month || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm text-gray-600">Status</p>
+                      <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold inline-block mt-1 ${
+                        parentFee.status === 'paid' ? 'bg-green-100 text-green-800' :
+                        parentFee.status === 'partial' ? 'bg-orange-100 text-orange-800' :
+                        parentFee.status === 'advanced' ? 'bg-blue-100 text-blue-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {parentFee.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Form */}
+                <div className="card p-4 sm:p-6">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4">Payment Details</h3>
+                  <form onSubmit={handlePayment} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Payment Type</label>
+                      <select
+                        value={paymentData.payment_type}
+                        onChange={(e) => setPaymentData({ ...paymentData, payment_type: e.target.value })}
+                        className="input text-sm sm:text-base"
+                      >
+                        <option value="normal">Pay Current Month</option>
+                        <option value="partial">Partial Payment</option>
+                        <option value="advance">Advance Payment</option>
+                      </select>
+                    </div>
+
+                    {paymentData.payment_type === 'advance' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Months in Advance</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={paymentData.months_advance}
+                          onChange={(e) => setPaymentData({ ...paymentData, months_advance: e.target.value })}
+                          className="input text-sm sm:text-base"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
+                      <div className="relative">
+                        <CurrencyDollarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          min="0.01"
+                          max={paymentData.payment_type === 'advance' ? undefined : parentFee.total_due_this_month}
+                          value={paymentData.amount}
+                          onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                          className="input pl-9 sm:pl-10 text-sm sm:text-base"
+                          placeholder="Enter amount"
+                        />
+                      </div>
+                      {paymentData.payment_type !== 'advance' && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Maximum: ${parseFloat(parentFee.total_due_this_month || 0).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                      <textarea
+                        value={paymentData.notes}
+                        onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
+                        className="input text-sm sm:text-base"
+                        rows="3"
+                      />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={clearSelection}
+                        className="flex-1 btn btn-outline py-2.5 sm:py-3 text-sm sm:text-base"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="flex-1 btn btn-primary py-2.5 sm:py-3 disabled:opacity-50 text-sm sm:text-base"
+                      >
+                        {loading ? 'Processing...' : 'Collect Payment'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* Payment Form */}
-          <div className="card p-4 sm:p-6">
-            <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Collect Payment</h2>
-            <form onSubmit={handlePayment} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Type</label>
-                <select
-                  value={paymentData.payment_type}
-                  onChange={(e) => setPaymentData({ ...paymentData, payment_type: e.target.value })}
-                  className="input text-sm sm:text-base"
-                >
-                  <option value="normal">Pay Current Month</option>
-                  <option value="partial">Partial Payment</option>
-                  <option value="advance">Advance Payment</option>
-                </select>
-              </div>
-
-              {paymentData.payment_type === 'advance' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Months in Advance</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={paymentData.months_advance}
-                    onChange={(e) => setPaymentData({ ...paymentData, months_advance: e.target.value })}
-                    className="input text-sm sm:text-base"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
-                <div className="relative">
-                  <CurrencyDollarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    min="0.01"
-                    max={paymentData.payment_type === 'advance' ? undefined : parentFee.total_due_this_month}
-                    value={paymentData.amount}
-                    onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                    className="input pl-9 sm:pl-10 text-sm sm:text-base"
-                    placeholder="Enter amount"
-                  />
-                </div>
-                {paymentData.payment_type !== 'advance' && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Maximum: ${parseFloat(parentFee.total_due_this_month || 0).toLocaleString()}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
-                <textarea
-                  value={paymentData.notes}
-                  onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
-                  className="input text-sm sm:text-base"
-                  rows="3"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full btn btn-primary py-2.5 sm:py-3 disabled:opacity-50 text-sm sm:text-base"
-              >
-                {loading ? 'Processing...' : 'Collect Payment'}
-              </button>
-            </form>
           </div>
         </div>
       )}
