@@ -59,8 +59,9 @@ router.post('/setup', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'This month already exists' });
     }
 
-    // Deactivate all other months
-    await client.query('UPDATE billing_months SET is_active = false');
+    // Deactivate all other months FIRST (before creating new one)
+    const deactivateResult = await client.query('UPDATE billing_months SET is_active = false WHERE is_active = true RETURNING id');
+    console.log(`Deactivated ${deactivateResult.rows.length} previous active month(s)`);
 
     // Create new billing month
     const monthResult = await client.query(
@@ -177,20 +178,46 @@ router.post('/setup', authenticateToken, async (req, res) => {
       );
     }
 
+    await client.query('COMMIT');
+
     // Emit real-time update via Socket.io
     const io = req.app.get('io');
     if (io) {
       io.emit('month:created', { month: newMonth });
+      io.emit('month:updated', { billing_month_id: newMonth.id });
       io.emit('reports:updated');
     }
     
-    res.status(201).json({ month: newMonth, message: 'Month setup completed successfully' });
+    res.status(201).json({ 
+      month: newMonth, 
+      message: 'Month setup completed successfully'
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Month setup error:', error);
     res.status(500).json({ error: 'Failed to setup month' });
   } finally {
     client.release();
+  }
+});
+
+// Get a single billing month by ID
+router.get('/:monthId', authenticateToken, async (req, res) => {
+  try {
+    const { monthId } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM billing_months WHERE id = $1',
+      [monthId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Month not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get month error:', error);
+    res.status(500).json({ error: 'Failed to fetch month' });
   }
 });
 
