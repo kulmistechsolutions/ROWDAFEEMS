@@ -32,13 +32,34 @@ export default function CollectFee() {
     fetchMonths()
   }, [])
 
+  // Refresh months when page becomes visible after being hidden (e.g., navigating back)
+  useEffect(() => {
+    let wasHidden = false
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        wasHidden = true
+      } else if (document.visibilityState === 'visible' && wasHidden) {
+        // Only refresh if page was hidden and now visible again
+        fetchMonths()
+        wasHidden = false
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
   useEffect(() => {
     if (selectedMonthId) {
       fetchAllFees()
     }
   }, [selectedMonthId])
 
-  // Listen for real-time payment updates
+  // Listen for real-time payment updates and month creation
   useEffect(() => {
     if (!socket) return
 
@@ -61,14 +82,22 @@ export default function CollectFee() {
       }
     }
 
+    const handleMonthCreated = (data) => {
+      // Refresh months list when a new month is created
+      fetchMonths()
+      toast.success('New month created! Refreshing...', { icon: '📅' })
+    }
+
     socket.on('payment:created', handlePaymentCreated)
     socket.on('parent:updated', handleParentUpdated)
     socket.on('month:updated', handleMonthUpdated)
+    socket.on('month:created', handleMonthCreated)
 
     return () => {
       socket.off('payment:created', handlePaymentCreated)
       socket.off('parent:updated', handleParentUpdated)
       socket.off('month:updated', handleMonthUpdated)
+      socket.off('month:created', handleMonthCreated)
     }
   }, [socket, selectedMonthId])
 
@@ -87,8 +116,11 @@ export default function CollectFee() {
         m.month <= 12
       )
       setMonths(validMonths)
+      
+      // Always prioritize active month - if one exists, select it
       const activeMonth = validMonths.find(m => m.is_active)
       if (activeMonth) {
+        // Always select the active month (it's the most recent one created)
         setSelectedMonthId(activeMonth.id)
         setSelectedMonth(activeMonth)
       } else if (validMonths.length > 0) {
