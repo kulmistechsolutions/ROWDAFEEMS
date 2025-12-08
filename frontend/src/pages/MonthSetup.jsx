@@ -65,6 +65,9 @@ export default function MonthSetup() {
       })
       toast.success('Month setup completed successfully!')
       fetchMonths()
+      // Reset to current date after successful setup
+      setSelectedYear(new Date().getFullYear())
+      setSelectedMonth(new Date().getMonth() + 1)
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to setup month')
     } finally {
