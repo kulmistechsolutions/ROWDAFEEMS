@@ -234,7 +234,16 @@ router.get('/export', authenticateToken, async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('Export parents error:', error);
-    res.status(500).json({ error: 'Failed to export parents' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Failed to export parents',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred while exporting. Please try again.'
+    });
   }
 });
 
