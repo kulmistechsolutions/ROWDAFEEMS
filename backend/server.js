@@ -32,11 +32,20 @@ const getAllowedOrigins = () => {
     origins.push(...frontendUrls);
   }
   
-  // Add Vercel domain if not already included
-  const vercelDomain = "https://rowdafeems-cu97.vercel.app";
-  if (!origins.includes(vercelDomain)) {
-    origins.push(vercelDomain);
-  }
+  // Add all known Vercel domains
+  const vercelDomains = [
+    "https://rowdafeems-cu97.vercel.app",
+    "https://rowdafeems-t9x62.vercel.app"
+  ];
+  
+  vercelDomains.forEach(domain => {
+    if (!origins.includes(domain)) {
+      origins.push(domain);
+    }
+  });
+  
+  // Also allow any vercel.app subdomain for flexibility
+  // This will be handled in the origin callback function
   
   return origins;
 };
@@ -45,7 +54,22 @@ const allowedOrigins = getAllowedOrigins();
 
 const io = new Server(httpServer, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin
+      if (!origin) return callback(null, true);
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Allow any vercel.app subdomain for flexibility
+      if (origin.includes('.vercel.app') || origin.includes('vercel.app')) {
+        return callback(null, true);
+      }
+      
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
@@ -64,11 +88,22 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    
+    // Allow any vercel.app subdomain for flexibility
+    if (origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // Allow any vercel.app preview deployments
+    if (origin.includes('vercel.app')) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
