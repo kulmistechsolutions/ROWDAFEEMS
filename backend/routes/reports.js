@@ -399,65 +399,79 @@ router.get('/export-pdf', authenticateToken, async (req, res) => {
     const totalExpenses = parseFloat(expenseData.total_expenses || 0);
     const netBalance = totalIncome - totalSalaryPaid - totalExpenses;
 
-    // Get detailed parent fee records
-    const parentDetailsQuery = `
-      SELECT 
-        p.parent_name,
-        p.phone_number,
-        p.monthly_fee_amount,
-        pmf.amount_paid_this_month,
-        pmf.outstanding_after_payment,
-        pmf.status
-      FROM parent_month_fee pmf
-      JOIN parents p ON pmf.parent_id = p.id
-      JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      ${monthQuery}
-      ORDER BY p.parent_name
-      LIMIT 100
-    `;
-    const parentDetailsResult = await pool.query(parentDetailsQuery, params);
+    // Get detailed parent fee records - Handle errors gracefully
+    let parentDetailsResult = { rows: [] };
+    try {
+      const parentDetailsQuery = `
+        SELECT 
+          p.parent_name,
+          p.phone_number,
+          p.monthly_fee_amount,
+          pmf.amount_paid_this_month,
+          pmf.outstanding_after_payment,
+          pmf.status
+        FROM parent_month_fee pmf
+        JOIN parents p ON pmf.parent_id = p.id
+        JOIN billing_months bm ON pmf.billing_month_id = bm.id
+        ${monthQuery}
+        ORDER BY p.parent_name
+        LIMIT 100
+      `;
+      parentDetailsResult = await pool.query(parentDetailsQuery, params);
+    } catch (err) {
+      console.error('Error fetching parent details for PDF:', err);
+    }
 
-    // Get detailed teacher salary records
-    const teacherDetailsQuery = `
-      SELECT 
-        t.full_name,
-        t.department,
-        t.monthly_salary_amount,
-        tsr.total_due_this_month,
-        tsr.amount_paid_this_month,
-        tsr.outstanding_after_payment,
-        tsr.status
-      FROM teacher_salary_records tsr
-      JOIN teachers t ON tsr.teacher_id = t.id
-      JOIN billing_months bm ON tsr.billing_month_id = bm.id
-      ${monthQuery}
-      ORDER BY t.full_name
-      LIMIT 100
-    `;
-    const teacherDetailsResult = await pool.query(teacherDetailsQuery, params);
+    // Get detailed teacher salary records - Handle errors gracefully
+    let teacherDetailsResult = { rows: [] };
+    try {
+      const teacherDetailsQuery = `
+        SELECT 
+          t.full_name,
+          t.department,
+          t.monthly_salary_amount,
+          tsr.total_due_this_month,
+          tsr.amount_paid_this_month,
+          tsr.outstanding_after_payment,
+          tsr.status
+        FROM teacher_salary_records tsr
+        JOIN teachers t ON tsr.teacher_id = t.id
+        JOIN billing_months bm ON tsr.billing_month_id = bm.id
+        ${monthQuery}
+        ORDER BY t.full_name
+        LIMIT 100
+      `;
+      teacherDetailsResult = await pool.query(teacherDetailsQuery, params);
+    } catch (err) {
+      console.error('Error fetching teacher details for PDF:', err);
+    }
 
-    // Get detailed expenses
-    let expensesDetailsQuery = `
-      SELECT 
-        e.expense_date,
-        ec.category_name,
-        e.amount,
-        e.notes
-      FROM expenses e
-      JOIN expense_categories ec ON e.category_id = ec.id
-      LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
-    `;
-    let expensesDetailsResult;
-    if (month) {
-      const [year, monthNum] = month.split('-');
-      expensesDetailsQuery += ' WHERE (bm.year = $1 AND bm.month = $2) OR (bm.id IS NULL AND EXTRACT(YEAR FROM e.expense_date) = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2)';
-      expensesDetailsQuery += ' ORDER BY e.expense_date DESC LIMIT 100';
-      const expenseParams = [year, monthNum];
-      expensesDetailsResult = await pool.query(expensesDetailsQuery, expenseParams);
-    } else {
-      expensesDetailsQuery += ' WHERE bm.is_active = true OR bm.id IS NULL';
-      expensesDetailsQuery += ' ORDER BY e.expense_date DESC LIMIT 100';
-      expensesDetailsResult = await pool.query(expensesDetailsQuery);
+    // Get detailed expenses - Handle errors gracefully
+    let expensesDetailsResult = { rows: [] };
+    try {
+      let expensesDetailsQuery = `
+        SELECT 
+          e.expense_date,
+          ec.category_name,
+          e.amount,
+          e.notes
+        FROM expenses e
+        JOIN expense_categories ec ON e.category_id = ec.id
+        LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
+      `;
+      if (month) {
+        const [year, monthNum] = month.split('-');
+        expensesDetailsQuery += ' WHERE (bm.year = $1 AND bm.month = $2) OR (bm.id IS NULL AND EXTRACT(YEAR FROM e.expense_date) = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2)';
+        expensesDetailsQuery += ' ORDER BY e.expense_date DESC LIMIT 100';
+        const expenseParams = [parseInt(year), parseInt(monthNum)];
+        expensesDetailsResult = await pool.query(expensesDetailsQuery, expenseParams);
+      } else {
+        expensesDetailsQuery += ' WHERE bm.is_active = true OR bm.id IS NULL';
+        expensesDetailsQuery += ' ORDER BY e.expense_date DESC LIMIT 100';
+        expensesDetailsResult = await pool.query(expensesDetailsQuery);
+      }
+    } catch (err) {
+      console.error('Error fetching expense details for PDF:', err);
     }
 
     // Get month info
@@ -753,7 +767,13 @@ router.get('/export-pdf', authenticateToken, async (req, res) => {
     doc.end();
   } catch (error) {
     console.error('Export PDF error:', error);
-    res.status(500).json({ error: 'Failed to export PDF' });
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to export PDF',
+      message: error.message || 'An error occurred while exporting. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
