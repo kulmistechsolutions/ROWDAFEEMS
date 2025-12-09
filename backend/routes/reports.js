@@ -65,8 +65,47 @@ router.get('/summary', authenticateToken, async (req, res) => {
       params
     );
 
+    // Get teacher salary summary
+    const teacherSalarySummary = await pool.query(`
+      SELECT 
+        COALESCE(SUM(tsr.total_due_this_month), 0) as total_salary_required,
+        COALESCE(SUM(tsr.amount_paid_this_month), 0) as total_salary_paid,
+        COALESCE(SUM(tsr.outstanding_after_payment), 0) as total_salary_outstanding
+      FROM teacher_salary_records tsr
+      JOIN billing_months bm ON tsr.billing_month_id = bm.id
+      ${monthQuery}`,
+      params
+    );
+
+    // Get expenses summary
+    const expensesSummary = await pool.query(`
+      SELECT 
+        COALESCE(SUM(e.amount), 0) as total_expenses
+      FROM expenses e
+      LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
+      ${monthQuery}`,
+      params
+    );
+
+    const parentSummary = summaryResult.rows[0];
+    const salarySummary = teacherSalarySummary.rows[0];
+    const expenseSummary = expensesSummary.rows[0];
+
+    // Calculate net balance
+    const totalIncome = parseFloat(parentSummary.total_collected || 0);
+    const totalSalaryPaid = parseFloat(salarySummary.total_salary_paid || 0);
+    const totalExpenses = parseFloat(expenseSummary.total_expenses || 0);
+    const netBalance = totalIncome - totalSalaryPaid - totalExpenses;
+
     res.json({
-      summary: summaryResult.rows[0],
+      summary: {
+        ...parentSummary,
+        total_salary_required: salarySummary.total_salary_required,
+        total_salary_paid: salarySummary.total_salary_paid,
+        total_salary_outstanding: salarySummary.total_salary_outstanding,
+        total_expenses: expenseSummary.total_expenses,
+        net_balance: netBalance
+      },
       trend: trendResult.rows.reverse(),
       distribution: distributionResult.rows
     });

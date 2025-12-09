@@ -12,6 +12,10 @@ import Reports from './pages/Reports'
 import Users from './pages/Users'
 import FeeHistory from './pages/FeeHistory'
 import ParentProfile from './pages/ParentProfile'
+import Teachers from './pages/Teachers'
+import PayTeacherSalary from './pages/PayTeacherSalary'
+import TeacherProfile from './pages/TeacherProfile'
+import Expenses from './pages/Expenses'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }) {
@@ -45,6 +49,10 @@ function AppRoutes() {
         <Route path="parents/:id/profile" element={<ParentProfile />} />
         <Route path="parents/:id/history" element={<FeeHistory />} />
         <Route path="collect-fee" element={<CollectFee />} />
+        <Route path="teachers" element={<Teachers />} />
+        <Route path="teachers/:id/profile" element={<TeacherProfile />} />
+        <Route path="pay-teacher-salary" element={<PayTeacherSalary />} />
+        <Route path="expenses" element={<Expenses />} />
         <Route path="month-setup" element={<MonthSetup />} />
         <Route path="reports" element={<Reports />} />
         <Route path="users" element={<Users />} />

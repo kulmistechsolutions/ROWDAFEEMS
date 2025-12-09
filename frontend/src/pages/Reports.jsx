@@ -117,23 +117,67 @@ export default function Reports() {
       {/* Financial Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
         <div className="card p-3 sm:p-4 md:p-6">
-          <p className="text-xs sm:text-sm font-medium text-gray-600">Total Collected</p>
+          <p className="text-xs sm:text-sm font-medium text-gray-600">Total Fees Collected</p>
           <p className="text-xl sm:text-2xl font-bold text-primary-600 mt-1 sm:mt-2">
             ${parseFloat(summary?.total_collected || 0).toLocaleString()}
           </p>
         </div>
         <div className="card p-3 sm:p-4 md:p-6">
-          <p className="text-xs sm:text-sm font-medium text-gray-600">Total Outstanding</p>
+          <p className="text-xs sm:text-sm font-medium text-gray-600">Outstanding Fees</p>
           <p className="text-xl sm:text-2xl font-bold text-red-600 mt-1 sm:mt-2">
             ${parseFloat(summary?.total_outstanding || 0).toLocaleString()}
           </p>
         </div>
-        <div className="card p-3 sm:p-4 md:p-6 sm:col-span-2 md:col-span-1">
+        <div className="card p-3 sm:p-4 md:p-6">
           <p className="text-xs sm:text-sm font-medium text-gray-600">Total Advance Value</p>
           <p className="text-xl sm:text-2xl font-bold text-blue-600 mt-1 sm:mt-2">
             ${parseFloat(summary?.total_advance_value || 0).toLocaleString()}
           </p>
         </div>
+      </div>
+
+      {/* Teacher Salary & Expenses Summary */}
+      <div className="card p-4 sm:p-6">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Teacher Salary & Expenses</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Salary Required</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
+              ${parseFloat(summary?.total_salary_required || 0).toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Salary Paid</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-600 mt-1">
+              ${parseFloat(summary?.total_salary_paid || 0).toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Salary Outstanding</p>
+            <p className="text-xl sm:text-2xl font-bold text-red-600 mt-1">
+              ${parseFloat(summary?.total_salary_outstanding || 0).toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Total Expenses</p>
+            <p className="text-xl sm:text-2xl font-bold text-orange-600 mt-1">
+              ${parseFloat(summary?.total_expenses || 0).toLocaleString()}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Net Balance */}
+      <div className="card p-4 sm:p-6 bg-gradient-to-r from-primary-50 to-blue-50">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Net Balance</h2>
+        <p className="text-3xl sm:text-4xl font-bold mt-2" style={{
+          color: (summary?.net_balance || 0) >= 0 ? '#059669' : '#dc2626'
+        }}>
+          ${parseFloat(summary?.net_balance || 0).toLocaleString()}
+        </p>
+        <p className="text-xs sm:text-sm text-gray-600 mt-2">
+          (Fees Collected - Salary Paid - Expenses)
+        </p>
       </div>
 
       {/* Detailed Statistics */}

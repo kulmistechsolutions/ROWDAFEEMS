@@ -13,6 +13,9 @@ import monthRoutes from './routes/months.js';
 import paymentRoutes from './routes/payments.js';
 import reportRoutes from './routes/reports.js';
 import userRoutes from './routes/users.js';
+import teacherRoutes from './routes/teachers.js';
+import teacherSalaryRoutes from './routes/teacherSalary.js';
+import expenseRoutes from './routes/expenses.js';
 
 dotenv.config();
 
@@ -122,6 +125,9 @@ app.use('/api/months', monthRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/teachers', teacherRoutes);
+app.use('/api/teachers/salary', teacherSalaryRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {

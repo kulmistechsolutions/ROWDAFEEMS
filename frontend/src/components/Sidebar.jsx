@@ -8,13 +8,19 @@ import {
   UserGroupIcon,
   XMarkIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  AcademicCapIcon,
+  BanknotesIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'Parents', href: '/parents', icon: UsersIcon },
   { name: 'Collect Fee', href: '/collect-fee', icon: CurrencyDollarIcon },
+  { name: 'Teachers', href: '/teachers', icon: AcademicCapIcon },
+  { name: 'Pay Teacher Salary', href: '/pay-teacher-salary', icon: BanknotesIcon },
+  { name: 'Expenses', href: '/expenses', icon: DocumentTextIcon },
   { name: 'Month Setup', href: '/month-setup', icon: CalendarIcon },
   { name: 'Reports', href: '/reports', icon: ChartBarIcon },
   { name: 'Users', href: '/users', icon: UserGroupIcon },

@@ -178,6 +178,130 @@ router.post('/setup', authenticateToken, async (req, res) => {
       );
     }
 
+    // ========== TEACHER SALARY AUTO-GENERATION ==========
+    // Get all active teachers
+    const teachersResult = await client.query('SELECT * FROM teachers WHERE is_active = true');
+
+    if (teachersResult.rows.length > 0) {
+      // Get previous month's teacher salary data
+      let prevMonthTeacherSalariesMap = {};
+      if (prevMonthResult.rows.length > 0) {
+        const prevMonthId = prevMonthResult.rows[0].id;
+        const prevMonthTeacherSalaries = await client.query(
+          'SELECT teacher_id, outstanding_after_payment, advance_months_remaining, amount_paid_this_month FROM teacher_salary_records WHERE billing_month_id = $1',
+          [prevMonthId]
+        );
+        prevMonthTeacherSalaries.rows.forEach(salary => {
+          prevMonthTeacherSalariesMap[salary.teacher_id] = salary;
+        });
+      }
+
+      // Get all teacher advance payments
+      const teacherIds = teachersResult.rows.map(t => t.id);
+      const allTeacherAdvancePayments = await client.query(
+        'SELECT teacher_id, months_remaining, amount_per_month, id FROM teacher_advance_payments WHERE teacher_id = ANY($1) AND months_remaining > 0 ORDER BY teacher_id, created_at ASC',
+        [teacherIds]
+      );
+      const teacherAdvancePaymentsMap = {};
+      allTeacherAdvancePayments.rows.forEach(advance => {
+        if (!teacherAdvancePaymentsMap[advance.teacher_id]) {
+          teacherAdvancePaymentsMap[advance.teacher_id] = advance;
+        }
+      });
+
+      // Prepare batch insert data for teacher salaries
+      const teacherSalaryInsertValues = [];
+      const teacherAdvanceUpdateIds = [];
+
+      for (const teacher of teachersResult.rows) {
+        let previousOutstanding = 0;
+        let advanceMonthsRemaining = 0;
+        let previousPaid = 0;
+
+        // Get previous month's data from map
+        if (prevMonthTeacherSalariesMap[teacher.id]) {
+          const prevSalary = prevMonthTeacherSalariesMap[teacher.id];
+          previousOutstanding = parseFloat(prevSalary.outstanding_after_payment || 0);
+          advanceMonthsRemaining = parseInt(prevSalary.advance_months_remaining || 0);
+          previousPaid = parseFloat(prevSalary.amount_paid_this_month || 0);
+        }
+
+        // Get teacher advance payment from map
+        const teacherAdvance = teacherAdvancePaymentsMap[teacher.id];
+        let totalDue = teacher.monthly_salary;
+        let status = 'unpaid';
+        let advanceBalanceUsed = 0;
+
+        // Determine status based on previous month payment
+        if (previousPaid > 0 && previousOutstanding === 0) {
+          // Teacher was paid last month
+          status = 'paid';
+        } else if (previousOutstanding > 0) {
+          // Teacher has outstanding from previous month
+          status = 'outstanding';
+          totalDue = teacher.monthly_salary + previousOutstanding;
+        }
+
+        // If teacher has advance payment, reduce due amount
+        if (teacherAdvance && advanceMonthsRemaining > 0) {
+          const advanceAmountPerMonth = parseFloat(teacherAdvance.amount_per_month);
+          
+          if (advanceAmountPerMonth >= teacher.monthly_salary) {
+            // Advance covers full salary
+            advanceBalanceUsed = teacher.monthly_salary;
+            totalDue = previousOutstanding; // Only previous outstanding remains
+            status = 'advance_covered';
+            teacherAdvanceUpdateIds.push(teacherAdvance.id);
+          } else {
+            // Partial advance - reduce salary by advance amount
+            advanceBalanceUsed = advanceAmountPerMonth;
+            totalDue = teacher.monthly_salary - advanceAmountPerMonth + previousOutstanding;
+            status = totalDue === 0 ? 'advance_covered' : 'partial';
+            teacherAdvanceUpdateIds.push(teacherAdvance.id);
+          }
+        }
+
+        // Prepare insert values for batch insert
+        teacherSalaryInsertValues.push([
+          teacher.id,
+          newMonth.id,
+          teacher.monthly_salary,
+          advanceBalanceUsed,
+          totalDue,
+          0, // amount_paid_this_month
+          totalDue, // outstanding_after_payment
+          status,
+          advanceMonthsRemaining > 0 ? advanceMonthsRemaining - (teacherAdvance && advanceMonthsRemaining > 0 ? 1 : 0) : 0
+        ]);
+      }
+
+      // Batch update teacher advance payments (only if any need updating)
+      if (teacherAdvanceUpdateIds.length > 0) {
+        await client.query(
+          'UPDATE teacher_advance_payments SET months_remaining = months_remaining - 1 WHERE id = ANY($1)',
+          [teacherAdvanceUpdateIds]
+        );
+      }
+
+      // Batch insert all teacher_salary_records
+      if (teacherSalaryInsertValues.length > 0) {
+        const teacherValues = teacherSalaryInsertValues.map((v, idx) => 
+          `($${idx * 9 + 1}, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9})`
+        ).join(', ');
+        
+        const teacherParams = teacherSalaryInsertValues.flat();
+        
+        await client.query(
+          `INSERT INTO teacher_salary_records 
+           (teacher_id, billing_month_id, monthly_salary, advance_balance_used, total_due_this_month, 
+            amount_paid_this_month, outstanding_after_payment, status, advance_months_remaining)
+           VALUES ${teacherValues}`,
+          teacherParams
+        );
+      }
+    }
+    // ========== END TEACHER SALARY AUTO-GENERATION ==========
+
     await client.query('COMMIT');
 
     // Emit real-time update via Socket.io
