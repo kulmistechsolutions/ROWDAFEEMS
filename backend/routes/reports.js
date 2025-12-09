@@ -123,124 +123,167 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
 
     let monthQuery = '';
     const params = [];
-    let paramIndex = 1;
 
     if (month) {
       const [year, monthNum] = month.split('-');
+      if (!year || !monthNum) {
+        return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
+      }
       monthQuery = 'WHERE bm.year = $1 AND bm.month = $2';
-      params.push(year, monthNum);
-      paramIndex = 3;
+      params.push(parseInt(year), parseInt(monthNum));
     } else {
       monthQuery = 'WHERE bm.is_active = true';
     }
 
-    // 1. Parent Fee Records
-    const parentQuery = `
-      SELECT 
-        p.parent_name as "Parent Name",
-        p.phone_number as "Phone",
-        p.number_of_children as "Children",
-        p.monthly_fee_amount as "Monthly Fee",
-        pmf.amount_paid_this_month as "Paid Amount",
-        pmf.outstanding_after_payment as "Outstanding",
-        pmf.status as "Status",
-        bm.year as "Year",
-        bm.month as "Month"
-      FROM parent_month_fee pmf
-      JOIN parents p ON pmf.parent_id = p.id
-      JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      ${monthQuery}
-      ORDER BY p.parent_name
-    `;
-
-    const parentResult = await pool.query(parentQuery, params);
-
-    // 2. Teacher Salary Records
-    const teacherSalaryQuery = `
-      SELECT 
-        t.full_name as "Teacher Name",
-        t.department as "Department",
-        t.monthly_salary_amount as "Monthly Salary",
-        tsr.total_due_this_month as "Total Due",
-        tsr.amount_paid_this_month as "Amount Paid",
-        tsr.outstanding_after_payment as "Outstanding",
-        tsr.status as "Status",
-        bm.year as "Year",
-        bm.month as "Month"
-      FROM teacher_salary_records tsr
-      JOIN teachers t ON tsr.teacher_id = t.id
-      JOIN billing_months bm ON tsr.billing_month_id = bm.id
-      ${monthQuery}
-      ORDER BY t.full_name
-    `;
-
-    const teacherSalaryResult = await pool.query(teacherSalaryQuery, params);
-
-    // 3. Expenses List
-    let expensesQuery = `
-      SELECT 
-        e.expense_date as "Date",
-        ec.category_name as "Category",
-        e.amount as "Amount",
-        e.notes as "Notes/Description",
-        bm.year as "Year",
-        bm.month as "Month"
-      FROM expenses e
-      JOIN expense_categories ec ON e.category_id = ec.id
-      LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
-    `;
-
-    const expenseParams = [];
-    if (month) {
-      const [year, monthNum] = month.split('-');
-      expensesQuery += ' WHERE (bm.year = $1 AND bm.month = $2) OR (bm.id IS NULL AND EXTRACT(YEAR FROM e.expense_date) = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2)';
-      expenseParams.push(year, monthNum);
-    } else {
-      expensesQuery += ' WHERE bm.is_active = true OR bm.id IS NULL';
+    // 1. Parent Fee Records - Handle empty results gracefully
+    let parentResult = { rows: [] };
+    try {
+      const parentQuery = `
+        SELECT 
+          p.parent_name as "Parent Name",
+          p.phone_number as "Phone",
+          p.number_of_children as "Children",
+          p.monthly_fee_amount as "Monthly Fee",
+          pmf.amount_paid_this_month as "Paid Amount",
+          pmf.outstanding_after_payment as "Outstanding",
+          pmf.status as "Status",
+          bm.year as "Year",
+          bm.month as "Month"
+        FROM parent_month_fee pmf
+        JOIN parents p ON pmf.parent_id = p.id
+        JOIN billing_months bm ON pmf.billing_month_id = bm.id
+        ${monthQuery}
+        ORDER BY p.parent_name
+      `;
+      parentResult = await pool.query(parentQuery, params);
+    } catch (err) {
+      console.error('Error fetching parent records:', err);
+      // Continue with empty array
     }
 
-    expensesQuery += ' ORDER BY e.expense_date DESC';
+    // 2. Teacher Salary Records - Handle empty results gracefully
+    let teacherSalaryResult = { rows: [] };
+    try {
+      const teacherSalaryQuery = `
+        SELECT 
+          t.full_name as "Teacher Name",
+          t.department as "Department",
+          t.monthly_salary_amount as "Monthly Salary",
+          tsr.total_due_this_month as "Total Due",
+          tsr.amount_paid_this_month as "Amount Paid",
+          tsr.outstanding_after_payment as "Outstanding",
+          tsr.status as "Status",
+          bm.year as "Year",
+          bm.month as "Month"
+        FROM teacher_salary_records tsr
+        JOIN teachers t ON tsr.teacher_id = t.id
+        JOIN billing_months bm ON tsr.billing_month_id = bm.id
+        ${monthQuery}
+        ORDER BY t.full_name
+      `;
+      teacherSalaryResult = await pool.query(teacherSalaryQuery, params);
+    } catch (err) {
+      console.error('Error fetching teacher salary records:', err);
+      // Continue with empty array
+    }
 
-    const expensesResult = await pool.query(expensesQuery, month ? expenseParams : []);
+    // 3. Expenses List - Handle empty results gracefully
+    let expensesResult = { rows: [] };
+    try {
+      let expensesQuery = `
+        SELECT 
+          e.expense_date as "Date",
+          ec.category_name as "Category",
+          e.amount as "Amount",
+          e.notes as "Notes/Description",
+          bm.year as "Year",
+          bm.month as "Month"
+        FROM expenses e
+        JOIN expense_categories ec ON e.category_id = ec.id
+        LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
+      `;
+
+      const expenseParams = [];
+      if (month) {
+        const [year, monthNum] = month.split('-');
+        expensesQuery += ' WHERE (bm.year = $1 AND bm.month = $2) OR (bm.id IS NULL AND EXTRACT(YEAR FROM e.expense_date) = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2)';
+        expenseParams.push(parseInt(year), parseInt(monthNum));
+      } else {
+        expensesQuery += ' WHERE bm.is_active = true OR bm.id IS NULL';
+      }
+
+      expensesQuery += ' ORDER BY e.expense_date DESC';
+
+      expensesResult = await pool.query(expensesQuery, month ? expenseParams : []);
+    } catch (err) {
+      console.error('Error fetching expenses:', err);
+      // Continue with empty array
+    }
 
     // 4. Summary Sheet - Get expenses separately to avoid complex subquery
-    let expensesSummaryQuery = `
-      SELECT COALESCE(SUM(e.amount), 0) as total_expenses
-      FROM expenses e
-      LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
-    `;
-    const expensesSummaryParams = [];
-    if (month) {
-      const [year, monthNum] = month.split('-');
-      expensesSummaryQuery += ' WHERE (bm.year = $1 AND bm.month = $2) OR (bm.id IS NULL AND EXTRACT(YEAR FROM e.expense_date) = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2)';
-      expensesSummaryParams.push(year, monthNum);
-    } else {
-      expensesSummaryQuery += ' WHERE bm.is_active = true OR bm.id IS NULL';
+    let totalExpenses = 0;
+    try {
+      let expensesSummaryQuery = `
+        SELECT COALESCE(SUM(e.amount), 0) as total_expenses
+        FROM expenses e
+        LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
+      `;
+      const expensesSummaryParams = [];
+      if (month) {
+        const [year, monthNum] = month.split('-');
+        expensesSummaryQuery += ' WHERE (bm.year = $1 AND bm.month = $2) OR (bm.id IS NULL AND EXTRACT(YEAR FROM e.expense_date) = $1 AND EXTRACT(MONTH FROM e.expense_date) = $2)';
+        expensesSummaryParams.push(parseInt(year), parseInt(monthNum));
+      } else {
+        expensesSummaryQuery += ' WHERE bm.is_active = true OR bm.id IS NULL';
+      }
+      const expensesSummaryResult = await pool.query(expensesSummaryQuery, expensesSummaryParams);
+      totalExpenses = parseFloat(expensesSummaryResult.rows[0]?.total_expenses || 0);
+    } catch (err) {
+      console.error('Error fetching expenses summary:', err);
+      totalExpenses = 0;
     }
-    const expensesSummaryResult = await pool.query(expensesSummaryQuery, expensesSummaryParams);
-    const totalExpenses = parseFloat(expensesSummaryResult.rows[0]?.total_expenses || 0);
 
-    // Get summary data
-    const summaryData = await pool.query(
-      `SELECT 
-        COALESCE(COUNT(DISTINCT p.id), 0) as "Total Parents",
-        COALESCE(COUNT(DISTINCT t.id), 0) as "Total Teachers",
-        COALESCE(SUM(pmf.amount_paid_this_month), 0) as "Total Fees Collected",
-        COALESCE(SUM(pmf.outstanding_after_payment), 0) as "Total Outstanding Fees",
-        COALESCE(SUM(tsr.total_due_this_month), 0) as "Total Salary Required",
-        COALESCE(SUM(tsr.amount_paid_this_month), 0) as "Total Salary Paid",
-        COALESCE(SUM(tsr.outstanding_after_payment), 0) as "Total Salary Outstanding"
-      FROM parent_month_fee pmf
-      JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      JOIN parents p ON pmf.parent_id = p.id
-      LEFT JOIN teacher_salary_records tsr ON tsr.billing_month_id = bm.id
-      LEFT JOIN teachers t ON tsr.teacher_id = t.id
-      ${monthQuery}`,
-      params
-    );
+    // Get summary data - Handle empty results
+    let summaryRow = {
+      'Total Parents': 0,
+      'Total Teachers': 0,
+      'Total Fees Collected': 0,
+      'Total Outstanding Fees': 0,
+      'Total Salary Required': 0,
+      'Total Salary Paid': 0,
+      'Total Salary Outstanding': 0,
+      'Total Expenses': totalExpenses,
+      'Net Balance': 0
+    };
+
+    try {
+      const summaryData = await pool.query(
+        `SELECT 
+          COALESCE(COUNT(DISTINCT p.id), 0) as "Total Parents",
+          COALESCE(COUNT(DISTINCT t.id), 0) as "Total Teachers",
+          COALESCE(SUM(pmf.amount_paid_this_month), 0) as "Total Fees Collected",
+          COALESCE(SUM(pmf.outstanding_after_payment), 0) as "Total Outstanding Fees",
+          COALESCE(SUM(tsr.total_due_this_month), 0) as "Total Salary Required",
+          COALESCE(SUM(tsr.amount_paid_this_month), 0) as "Total Salary Paid",
+          COALESCE(SUM(tsr.outstanding_after_payment), 0) as "Total Salary Outstanding"
+        FROM parent_month_fee pmf
+        JOIN billing_months bm ON pmf.billing_month_id = bm.id
+        JOIN parents p ON pmf.parent_id = p.id
+        LEFT JOIN teacher_salary_records tsr ON tsr.billing_month_id = bm.id
+        LEFT JOIN teachers t ON tsr.teacher_id = t.id
+        ${monthQuery}`,
+        params
+      );
+
+      if (summaryData.rows.length > 0) {
+        summaryRow = summaryData.rows[0];
+      }
+    } catch (err) {
+      console.error('Error fetching summary data:', err);
+      // Use default values
+    }
 
     // Calculate net balance
-    const summaryRow = summaryData.rows[0] || {};
     const totalFeesCollected = parseFloat(summaryRow['Total Fees Collected'] || 0);
     const totalSalaryPaid = parseFloat(summaryRow['Total Salary Paid'] || 0);
     const netBalance = totalFeesCollected - totalSalaryPaid - totalExpenses;
@@ -283,10 +326,12 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('Export Excel error:', error);
+    console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     res.status(500).json({ 
       error: 'Failed to export Excel',
-      message: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred while exporting. Please try again.'
+      message: error.message || 'An error occurred while exporting. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
