@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useSocket } from '../contexts/SocketContext'
-import { ArrowDownTrayIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, DocumentArrowDownIcon, UsersIcon, AcademicCapIcon, ReceiptPercentIcon, Square3Stack3DIcon } from '@heroicons/react/24/outline'
 
 export default function Reports() {
   const [summary, setSummary] = useState(null)
@@ -42,10 +42,14 @@ export default function Reports() {
     }
   }
 
-  const handleExport = async () => {
+  const handleExport = async (type = 'all', format = 'excel') => {
     try {
       const params = selectedMonth ? { month: selectedMonth } : {}
-      const response = await api.get('/reports/export-excel', {
+      const endpoint = type === 'all' 
+        ? `/reports/export-${format}` 
+        : `/reports/export-${type}-${format}`
+      
+      const response = await api.get(endpoint, {
         params,
         responseType: 'blob'
       })
@@ -53,36 +57,16 @@ export default function Reports() {
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `complete-report-${selectedMonth || 'active'}.xlsx`)
+      const typeName = type === 'all' ? 'complete-report' : `${type}-report`
+      const extension = format === 'excel' ? 'xlsx' : 'pdf'
+      link.setAttribute('download', `${typeName}-${selectedMonth || 'active'}.${extension}`)
       document.body.appendChild(link)
       link.click()
       link.remove()
 
-      toast.success('Excel file downloaded successfully')
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} ${format.toUpperCase()} downloaded successfully`)
     } catch (error) {
-      toast.error('Failed to export Excel')
-    }
-  }
-
-  const handleExportPDF = async () => {
-    try {
-      const params = selectedMonth ? { month: selectedMonth } : {}
-      const response = await api.get('/reports/export-pdf', {
-        params,
-        responseType: 'blob'
-      })
-
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `complete-report-${selectedMonth || 'active'}.pdf`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-
-      toast.success('PDF report downloaded successfully')
-    } catch (error) {
-      toast.error('Failed to export PDF')
+      toast.error(`Failed to export ${type} ${format}`)
     }
   }
 
@@ -101,23 +85,115 @@ export default function Reports() {
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Reports</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">View and export fee collection reports</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="input w-full sm:w-48 text-sm sm:text-base"
           />
-          <button onClick={handleExport} className="btn btn-primary w-full sm:w-auto text-sm sm:text-base">
-            <ArrowDownTrayIcon className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
-            <span className="hidden sm:inline">Export Excel</span>
-            <span className="sm:hidden">Excel</span>
-          </button>
-          <button onClick={handleExportPDF} className="btn btn-outline w-full sm:w-auto text-sm sm:text-base">
-            <DocumentArrowDownIcon className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
-            <span className="hidden sm:inline">Export PDF</span>
-            <span className="sm:hidden">PDF</span>
-          </button>
+        </div>
+
+        {/* Export Buttons Section */}
+        <div className="card p-4 sm:p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Export Reports</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Parents Export */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <UsersIcon className="h-5 w-5 text-primary-600" />
+                <h3 className="font-semibold text-gray-900">Parents</h3>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleExport('parents', 'excel')} 
+                  className="btn btn-outline text-sm w-full"
+                >
+                  <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                  Excel
+                </button>
+                <button 
+                  onClick={() => handleExport('parents', 'pdf')} 
+                  className="btn btn-outline text-sm w-full"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                  PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Teachers Export */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <AcademicCapIcon className="h-5 w-5 text-green-600" />
+                <h3 className="font-semibold text-gray-900">Teachers</h3>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleExport('teachers', 'excel')} 
+                  className="btn btn-outline text-sm w-full"
+                >
+                  <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                  Excel
+                </button>
+                <button 
+                  onClick={() => handleExport('teachers', 'pdf')} 
+                  className="btn btn-outline text-sm w-full"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                  PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Expenses Export */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <ReceiptPercentIcon className="h-5 w-5 text-orange-600" />
+                <h3 className="font-semibold text-gray-900">Expenses</h3>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleExport('expenses', 'excel')} 
+                  className="btn btn-outline text-sm w-full"
+                >
+                  <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                  Excel
+                </button>
+                <button 
+                  onClick={() => handleExport('expenses', 'pdf')} 
+                  className="btn btn-outline text-sm w-full"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                  PDF
+                </button>
+              </div>
+            </div>
+
+            {/* All Reports Export */}
+            <div className="border-2 border-primary-500 rounded-lg p-4 bg-primary-50">
+              <div className="flex items-center gap-2 mb-3">
+                <Square3Stack3DIcon className="h-5 w-5 text-primary-600" />
+                <h3 className="font-semibold text-gray-900">All Reports</h3>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleExport('all', 'excel')} 
+                  className="btn btn-primary text-sm w-full"
+                >
+                  <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                  Excel
+                </button>
+                <button 
+                  onClick={() => handleExport('all', 'pdf')} 
+                  className="btn btn-primary text-sm w-full"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                  PDF
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
