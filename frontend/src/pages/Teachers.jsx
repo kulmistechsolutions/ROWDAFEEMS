@@ -143,22 +143,24 @@ export default function Teachers() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by name or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input pl-10"
-          />
-        </div>
+      {/* Search */}
+      <div className="relative">
+        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search by name or phone..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input pl-9 sm:pl-10 text-sm sm:text-base"
+        />
+      </div>
+
+      {/* Department Filter */}
+      <div>
         <select
           value={departmentFilter}
           onChange={(e) => setDepartmentFilter(e.target.value)}
-          className="input sm:w-64"
+          className="input w-full sm:w-64 text-sm sm:text-base"
         >
           <option value="all">All Departments</option>
           {DEPARTMENTS.map(dept => (
@@ -167,8 +169,8 @@ export default function Teachers() {
         </select>
       </div>
 
-      {/* Table View */}
-      <div className="card overflow-hidden p-0">
+      {/* Desktop Table View */}
+      <div className="hidden lg:block card overflow-hidden p-0 w-full">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -182,12 +184,24 @@ export default function Teachers() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monthly Salary</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date Joined</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Department
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Monthly Salary
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date Joined
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -241,11 +255,76 @@ export default function Teachers() {
         )}
       </div>
 
+      {/* Mobile Card View */}
+      <div className="lg:hidden space-y-3">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          </div>
+        ) : teachers.length === 0 ? (
+          <div className="card p-6 text-center text-gray-500">
+            No teachers found. Add a new teacher to get started.
+          </div>
+        ) : (
+          teachers.map((teacher) => (
+            <div key={teacher.id} className="card p-4 hover:shadow-lg transition-shadow">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-gray-900 truncate mb-1">
+                    {teacher.teacher_name}
+                  </h3>
+                  <p className="text-sm text-gray-600">{teacher.department}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+                <div>
+                  <p className="text-xs text-gray-600">Monthly Salary</p>
+                  <p className="font-semibold">${parseFloat(teacher.monthly_salary).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Phone</p>
+                  <p className="font-semibold break-all">{teacher.phone_number || 'N/A'}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-600">Date Joined</p>
+                  <p className="font-semibold">{new Date(teacher.date_of_joining).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-gray-200">
+                <button
+                  onClick={() => handleEdit(teacher)}
+                  className="flex-1 btn btn-outline text-sm py-2 flex items-center justify-center gap-2"
+                >
+                  <PencilIcon className="h-4 w-4" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => navigate(`/teachers/${teacher.id}/profile`)}
+                  className="flex-1 btn btn-primary text-sm py-2 flex items-center justify-center gap-2"
+                >
+                  <EyeIcon className="h-4 w-4" />
+                  View
+                </button>
+                <button
+                  onClick={() => handleDelete(teacher)}
+                  className="btn btn-outline text-sm py-2 px-3 text-red-600 hover:bg-red-50 border-red-300 flex items-center justify-center"
+                  title="Delete"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
       {/* Add/Edit Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+          <div className="bg-white rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">
               {editingTeacher ? 'Edit Teacher' : 'Add New Teacher'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -254,7 +333,7 @@ export default function Teachers() {
                 <input
                   type="text"
                   required
-                  className="input"
+                  className="input text-sm sm:text-base"
                   value={formData.teacher_name}
                   onChange={(e) => setFormData({ ...formData, teacher_name: e.target.value })}
                 />
@@ -263,7 +342,7 @@ export default function Teachers() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
                 <select
                   required
-                  className="input"
+                  className="input text-sm sm:text-base"
                   value={formData.department}
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                 >
@@ -279,7 +358,7 @@ export default function Teachers() {
                   type="number"
                   step="0.01"
                   required
-                  className="input"
+                  className="input text-sm sm:text-base"
                   value={formData.monthly_salary}
                   onChange={(e) => setFormData({ ...formData, monthly_salary: e.target.value })}
                 />
@@ -288,7 +367,7 @@ export default function Teachers() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                 <input
                   type="text"
-                  className="input"
+                  className="input text-sm sm:text-base"
                   value={formData.phone_number}
                   onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                 />
@@ -298,13 +377,13 @@ export default function Teachers() {
                 <input
                   type="date"
                   required
-                  className="input"
+                  className="input text-sm sm:text-base"
                   value={formData.date_of_joining}
                   onChange={(e) => setFormData({ ...formData, date_of_joining: e.target.value })}
                 />
               </div>
-              <div className="flex gap-3 pt-4">
-                <button type="submit" className="flex-1 btn btn-primary">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
+                <button type="submit" className="flex-1 btn btn-primary text-sm sm:text-base">
                   {editingTeacher ? 'Update' : 'Add'} Teacher
                 </button>
                 <button
@@ -314,7 +393,7 @@ export default function Teachers() {
                     setEditingTeacher(null)
                     setFormData({ teacher_name: '', department: '', monthly_salary: '', phone_number: '', date_of_joining: '' })
                   }}
-                  className="flex-1 btn btn-outline"
+                  className="flex-1 btn btn-outline text-sm sm:text-base"
                 >
                   Cancel
                 </button>
