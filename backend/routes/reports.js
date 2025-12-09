@@ -1248,23 +1248,7 @@ router.get('/export-pdf', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper function to build month query
-function buildMonthQuery(month) {
-  if (month) {
-    const [year, monthNum] = month.split('-');
-    return {
-      query: 'WHERE bm.year = $1 AND bm.month = $2',
-      params: [parseInt(year), parseInt(monthNum)]
-    };
-  }
-  return {
-    query: 'WHERE bm.is_active = true',
-    params: []
-  };
-}
-
-// Export Parents Only - Excel
-router.get('/export-parents-excel', authenticateToken, async (req, res) => {
+export default router;
   try {
     const { month } = req.query;
     const { query: monthQuery, params } = buildMonthQuery(month);
