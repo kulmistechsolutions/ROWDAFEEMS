@@ -31,6 +31,12 @@ router.post('/categories', authenticateToken, async (req, res) => {
       [category_name, description || null]
     );
 
+    // Emit real-time update via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('expense:category:created', { category: result.rows[0] });
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error.code === '23505') {
@@ -38,6 +44,79 @@ router.post('/categories', authenticateToken, async (req, res) => {
     }
     console.error('Create expense category error:', error);
     res.status(500).json({ error: 'Failed to create expense category' });
+  }
+});
+
+// Update expense category
+router.put('/categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category_name, description } = req.body;
+
+    if (!category_name) {
+      return res.status(400).json({ error: 'Category name is required' });
+    }
+
+    const result = await pool.query(
+      `UPDATE expense_categories 
+       SET category_name = $1, description = $2
+       WHERE id = $3 RETURNING *`,
+      [category_name, description || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    // Emit real-time update via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('expense:category:updated', { category_id: id, category: result.rows[0] });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(400).json({ error: 'Category name already exists' });
+    }
+    console.error('Update expense category error:', error);
+    res.status(500).json({ error: 'Failed to update expense category' });
+  }
+});
+
+// Delete expense category
+router.delete('/categories/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if category exists
+    const categoryResult = await pool.query('SELECT * FROM expense_categories WHERE id = $1', [id]);
+    if (categoryResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    // Check if category is being used by any expenses
+    const expensesCheck = await pool.query('SELECT COUNT(*) as count FROM expenses WHERE category_id = $1', [id]);
+    const expenseCount = parseInt(expensesCheck.rows[0].count);
+
+    if (expenseCount > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete category. It is being used by ${expenseCount} expense(s). Please remove or reassign those expenses first.` 
+      });
+    }
+
+    await pool.query('DELETE FROM expense_categories WHERE id = $1', [id]);
+
+    // Emit real-time update via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('expense:category:deleted', { category_id: id });
+    }
+
+    res.json({ message: 'Category deleted successfully' });
+  } catch (error) {
+    console.error('Delete expense category error:', error);
+    res.status(500).json({ error: 'Failed to delete expense category' });
   }
 });
 

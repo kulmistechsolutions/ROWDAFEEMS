@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useSocket } from '../contexts/SocketContext'
-import { PlusIcon, PencilIcon, TrashIcon, ArrowDownTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState([])
@@ -10,7 +10,13 @@ export default function Expenses() {
   const [months, setMonths] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState(null)
+  const [editingCategory, setEditingCategory] = useState(null)
+  const [categoryFormData, setCategoryFormData] = useState({
+    category_name: '',
+    description: ''
+  })
   const [filters, setFilters] = useState({
     month: '',
     category_id: 'all'
@@ -44,13 +50,31 @@ export default function Expenses() {
       fetchExpenses()
       toast.success('Expense deleted')
     }
+    const handleCategoryCreated = () => {
+      fetchCategories()
+      toast.success('Category created')
+    }
+    const handleCategoryUpdated = () => {
+      fetchCategories()
+      toast.success('Category updated')
+    }
+    const handleCategoryDeleted = () => {
+      fetchCategories()
+      toast.success('Category deleted')
+    }
     socket.on('expense:created', handleExpenseCreated)
     socket.on('expense:updated', handleExpenseUpdated)
     socket.on('expense:deleted', handleExpenseDeleted)
+    socket.on('expense:category:created', handleCategoryCreated)
+    socket.on('expense:category:updated', handleCategoryUpdated)
+    socket.on('expense:category:deleted', handleCategoryDeleted)
     return () => {
       socket.off('expense:created', handleExpenseCreated)
       socket.off('expense:updated', handleExpenseUpdated)
       socket.off('expense:deleted', handleExpenseDeleted)
+      socket.off('expense:category:created', handleCategoryCreated)
+      socket.off('expense:category:updated', handleCategoryUpdated)
+      socket.off('expense:category:deleted', handleCategoryDeleted)
     }
   }, [socket])
 
@@ -148,25 +172,128 @@ export default function Expenses() {
     }
   }
 
+  const handleCategorySubmit = async (e) => {
+    e.preventDefault()
+    try {
+      if (editingCategory) {
+        await api.put(`/expenses/categories/${editingCategory.id}`, categoryFormData)
+        toast.success('Category updated successfully')
+      } else {
+        await api.post('/expenses/categories', categoryFormData)
+        toast.success('Category created successfully')
+      }
+      setShowCategoryModal(false)
+      setEditingCategory(null)
+      setCategoryFormData({ category_name: '', description: '' })
+      fetchCategories()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to save category')
+    }
+  }
+
+  const handleEditCategory = (category) => {
+    setEditingCategory(category)
+    setCategoryFormData({
+      category_name: category.category_name,
+      description: category.description || ''
+    })
+    setShowCategoryModal(true)
+  }
+
+  const handleDeleteCategory = async (category) => {
+    if (!window.confirm(`Delete category "${category.category_name}"? This will only work if no expenses use this category.`)) {
+      return
+    }
+    try {
+      // Check if backend supports delete
+      await api.delete(`/expenses/categories/${category.id}`)
+      toast.success('Category deleted successfully')
+      fetchCategories()
+    } catch (error) {
+      if (error.response?.status === 404) {
+        toast.error('Delete category endpoint not available. Categories with expenses cannot be deleted.')
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to delete category. Category may be in use.')
+      }
+    }
+  }
+
   const totalExpenses = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0)
 
   return (
     <div className="w-full space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Expenses Management</h1>
-          <p className="text-sm text-gray-500 mt-1">Track and manage school expenses</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Expenses Management</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">Track and manage school expenses</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={handleExport} className="btn btn-outline">
-            <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
-            Export
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+          <button onClick={handleExport} className="btn btn-outline w-full sm:w-auto text-sm">
+            <ArrowDownTrayIcon className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
           </button>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
-            <PlusIcon className="h-5 w-5 mr-2" />
+          <button onClick={() => setShowAddModal(true)} className="btn btn-primary w-full sm:w-auto text-sm">
+            <PlusIcon className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
             Add Expense
           </button>
         </div>
+      </div>
+
+      {/* Expense Categories Management */}
+      <div className="card">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+          <div>
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Expense Categories</h2>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1">Create categories first, then use them when adding expenses</p>
+          </div>
+          <button 
+            onClick={() => {
+              setEditingCategory(null)
+              setCategoryFormData({ category_name: '', description: '' })
+              setShowCategoryModal(true)
+            }} 
+            className="btn btn-primary text-sm w-full sm:w-auto"
+          >
+            <PlusIcon className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+            Add Category
+          </button>
+        </div>
+        
+        {categories.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <p className="mb-2">No categories found.</p>
+            <p className="text-sm">Create a category first to start adding expenses.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {categories.map((category) => (
+              <div key={category.id} className="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-semibold text-gray-900 text-sm flex-1">{category.category_name}</h3>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => handleEditCategory(category)}
+                      className="text-primary-600 hover:text-primary-900 text-xs"
+                      title="Edit Category"
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCategory(category)}
+                      className="text-red-600 hover:text-red-900 text-xs"
+                      title="Delete Category"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                {category.description && (
+                  <p className="text-xs text-gray-600 mt-1">{category.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -347,6 +474,68 @@ export default function Expenses() {
                     setFormData({ category_id: '', amount: '', expense_date: new Date().toISOString().split('T')[0], billing_month_id: '', notes: '' })
                   }}
                   className="flex-1 btn btn-outline"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Category Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-4 sm:p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
+                {editingCategory ? 'Edit Category' : 'Add New Category'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowCategoryModal(false)
+                  setEditingCategory(null)
+                  setCategoryFormData({ category_name: '', description: '' })
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <form onSubmit={handleCategorySubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
+                <input
+                  type="text"
+                  required
+                  className="input text-sm sm:text-base"
+                  value={categoryFormData.category_name}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, category_name: e.target.value })}
+                  placeholder="e.g., Maintenance, Books, Electricity"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                <textarea
+                  className="input text-sm sm:text-base"
+                  rows="3"
+                  value={categoryFormData.description}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
+                  placeholder="Brief description of this category"
+                />
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
+                <button type="submit" className="flex-1 btn btn-primary text-sm sm:text-base">
+                  {editingCategory ? 'Update' : 'Create'} Category
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCategoryModal(false)
+                    setEditingCategory(null)
+                    setCategoryFormData({ category_name: '', description: '' })
+                  }}
+                  className="flex-1 btn btn-outline text-sm sm:text-base"
                 >
                   Cancel
                 </button>
