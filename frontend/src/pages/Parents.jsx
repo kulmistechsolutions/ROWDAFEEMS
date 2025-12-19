@@ -11,7 +11,9 @@ import {
   ArrowDownTrayIcon,
   DocumentArrowDownIcon,
   TrashIcon,
-  ArrowDownOnSquareIcon
+  ArrowDownOnSquareIcon,
+  FunnelIcon,
+  CalendarIcon
 } from '@heroicons/react/24/outline'
 
 export default function Parents() {
@@ -19,6 +21,9 @@ export default function Parents() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [months, setMonths] = useState([])
+  const [selectedMonthId, setSelectedMonthId] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingParent, setEditingParent] = useState(null)
   const [formData, setFormData] = useState({
@@ -30,6 +35,11 @@ export default function Parents() {
   const navigate = useNavigate()
   const { socket } = useSocket()
 
+  // Fetch months on mount
+  useEffect(() => {
+    fetchMonths()
+  }, [])
+
   // Debounce search to avoid too many API calls
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -40,19 +50,40 @@ export default function Parents() {
 
   useEffect(() => {
     fetchParents()
-  }, [debouncedSearch])
+  }, [debouncedSearch, selectedMonthId, statusFilter])
+
+  const fetchMonths = async () => {
+    try {
+      const response = await api.get('/months')
+      setMonths(response.data || [])
+      // Auto-select active month if available
+      const activeMonth = response.data?.find(m => m.is_active)
+      if (activeMonth) {
+        setSelectedMonthId(activeMonth.id)
+      }
+    } catch (error) {
+      toast.error('Failed to fetch months')
+    }
+  }
 
   const fetchParents = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await api.get('/parents', { params: { search: debouncedSearch } })
+      const params = { search: debouncedSearch }
+      if (selectedMonthId) {
+        params.month_id = selectedMonthId
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter
+      }
+      const response = await api.get('/parents', { params })
       setParents(response.data.parents)
     } catch (error) {
       toast.error('Failed to fetch parents')
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch])
+  }, [debouncedSearch, selectedMonthId, statusFilter])
 
   // Listen for real-time updates
   useEffect(() => {
@@ -147,7 +178,19 @@ export default function Parents() {
 
   const handleExportAllParents = async () => {
     try {
+      const params = {}
+      if (selectedMonthId) {
+        params.month_id = selectedMonthId
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter
+      }
+      if (debouncedSearch) {
+        params.search = debouncedSearch
+      }
+      
       const response = await api.get('/parents/export', {
+        params,
         responseType: 'blob'
       })
       
@@ -171,7 +214,7 @@ export default function Parents() {
       link.remove()
       window.URL.revokeObjectURL(url)
       
-      toast.success('All parents exported successfully')
+      toast.success('Parents exported successfully')
     } catch (error) {
       toast.error('Failed to export parents')
     }
@@ -230,10 +273,20 @@ export default function Parents() {
           <button 
             onClick={handleExportAllParents} 
             className="btn btn-outline w-full sm:w-auto text-sm"
-            title="Export all parents to Excel"
+            title={
+              statusFilter && statusFilter !== 'all' 
+                ? `Export ${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Parents${selectedMonthId ? ' for selected month' : ''}`
+                : selectedMonthId 
+                  ? 'Export Parents for selected month'
+                  : 'Export all parents to Excel'
+            }
           >
             <ArrowDownOnSquareIcon className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
-            <span className="hidden sm:inline">Export All</span>
+            <span className="hidden sm:inline">
+              {statusFilter && statusFilter !== 'all' 
+                ? `Export ${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}`
+                : 'Export Parents'}
+            </span>
             <span className="sm:hidden">Export</span>
           </button>
           <button 
@@ -258,16 +311,69 @@ export default function Parents() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search by name or phone..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input pl-9 sm:pl-10 text-sm sm:text-base"
-        />
+      {/* Filters */}
+      <div className="card p-4 sm:p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Search */}
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name or phone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 sm:pl-10 text-sm sm:text-base w-full"
+            />
+          </div>
+          
+          {/* Month Filter */}
+          <div className="relative">
+            <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400 pointer-events-none" />
+            <select
+              value={selectedMonthId}
+              onChange={(e) => setSelectedMonthId(e.target.value)}
+              className="input pl-9 sm:pl-10 text-sm sm:text-base w-full appearance-none"
+            >
+              <option value="">All Months</option>
+              {months.map((month) => {
+                if (!month || typeof month.year !== 'number' || typeof month.month !== 'number') {
+                  return null
+                }
+                const monthDate = new Date(month.year, month.month - 1)
+                if (isNaN(monthDate.getTime())) {
+                  return null
+                }
+                const monthName = monthDate.toLocaleDateString('en-US', {
+                  month: 'long',
+                  year: 'numeric'
+                })
+                return (
+                  <option key={month.id} value={month.id}>
+                    {monthName}
+                    {month.is_active && ' (Active)'}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+          
+          {/* Status Filter */}
+          <div className="relative">
+            <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400 pointer-events-none" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input pl-9 sm:pl-10 text-sm sm:text-base w-full appearance-none"
+            >
+              <option value="all">All Status</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="partial">Partial</option>
+              <option value="outstanding">Outstanding</option>
+              <option value="advanced">Advance</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Desktop Table View */}

@@ -16,6 +16,7 @@ import Teachers from './pages/Teachers'
 import PayTeacherSalary from './pages/PayTeacherSalary'
 import TeacherProfile from './pages/TeacherProfile'
 import Expenses from './pages/Expenses'
+import UserMonitoring from './pages/UserMonitoring'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }) {
@@ -48,7 +49,7 @@ function AdminRoute({ children }) {
   }
 
   if (user.role !== 'admin') {
-    return <Navigate to="/" />
+    return <Navigate to="/collect-fee" />
   }
 
   return children
@@ -66,19 +67,20 @@ function AppRoutes() {
           </PrivateRoute>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<AdminRoute><Dashboard /></AdminRoute>} />
         <Route path="parents" element={<Parents />} />
         <Route path="parents/:id/profile" element={<ParentProfile />} />
         <Route path="parents/:id/history" element={<FeeHistory />} />
         <Route path="collect-fee" element={<CollectFee />} />
-        <Route path="reports" element={<Reports />} />
         {/* Admin-only routes */}
+        <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
         <Route path="teachers" element={<AdminRoute><Teachers /></AdminRoute>} />
         <Route path="teachers/:id/profile" element={<AdminRoute><TeacherProfile /></AdminRoute>} />
         <Route path="pay-teacher-salary" element={<AdminRoute><PayTeacherSalary /></AdminRoute>} />
         <Route path="expenses" element={<AdminRoute><Expenses /></AdminRoute>} />
         <Route path="month-setup" element={<AdminRoute><MonthSetup /></AdminRoute>} />
         <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
+        <Route path="user-monitoring" element={<AdminRoute><UserMonitoring /></AdminRoute>} />
       </Route>
     </Routes>
   )

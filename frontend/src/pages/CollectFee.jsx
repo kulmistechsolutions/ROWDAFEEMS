@@ -183,6 +183,14 @@ export default function CollectFee() {
     })
     setParentFee(fee)
     setSearchQuery('')
+    // Auto-select advance payment if month is already paid
+    if (fee.status === 'paid') {
+      const monthlyFee = parseFloat(fee.parent_monthly_fee || 0)
+      const calculatedAmount = (monthlyFee * 1).toFixed(2)
+      setPaymentData({ amount: calculatedAmount, payment_type: 'advance', months_advance: 1, notes: '' })
+    } else {
+      setPaymentData({ amount: '', payment_type: 'normal', months_advance: 1, notes: '' })
+    }
   }
 
   const clearSelection = () => {
@@ -198,12 +206,49 @@ export default function CollectFee() {
       return
     }
 
+    // Frontend validation
+    const paymentAmount = parseFloat(paymentData.amount)
+    if (!paymentAmount || paymentAmount <= 0) {
+      toast.error('Please enter a valid payment amount')
+      return
+    }
+
+    // STRICT VALIDATION: Check if month is already fully paid (only for normal/partial payments)
+    if (parentFee && parentFee.status === 'paid' && paymentData.payment_type !== 'advance') {
+      toast.error('This month is already fully paid. Please select Advance Payment to pay for future months.')
+      return
+    }
+
+    // STRICT VALIDATION: For normal payments, check if amount exceeds monthly due
+    if (paymentData.payment_type === 'normal' && parentFee) {
+      const feePaid = parseFloat(parentFee.amount_paid_this_month || 0)
+      const feeTotalDue = parseFloat(parentFee.total_due_this_month || 0)
+      const remainingDue = feeTotalDue - feePaid
+
+      if (paymentAmount > remainingDue) {
+        toast.error(`Amount exceeds this month's payable fee. Select Advance Payment to pay extra. Maximum allowed: $${remainingDue.toFixed(2)}`)
+        return
+      }
+    }
+
+    // STRICT VALIDATION: For partial payments, amount must be less than remaining due
+    if (paymentData.payment_type === 'partial' && parentFee) {
+      const feePaid = parseFloat(parentFee.amount_paid_this_month || 0)
+      const feeTotalDue = parseFloat(parentFee.total_due_this_month || 0)
+      const remainingDue = feeTotalDue - feePaid
+
+      if (paymentAmount >= remainingDue) {
+        toast.error(`Partial payment amount must be less than the remaining due ($${remainingDue.toFixed(2)}). Use normal payment for full amount or Advance Payment for extra.`)
+        return
+      }
+    }
+
     try {
       setLoading(true)
       const response = await api.post('/payments', {
         parent_id: selectedParent.id,
         billing_month_id: selectedMonthId,
-        amount: parseFloat(paymentData.amount),
+        amount: paymentAmount,
         payment_type: paymentData.payment_type,
         months_advance: paymentData.payment_type === 'advance' ? parseInt(paymentData.months_advance) : null,
         notes: paymentData.notes
@@ -569,13 +614,30 @@ export default function CollectFee() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Payment Type</label>
                       <select
                         value={paymentData.payment_type}
-                        onChange={(e) => setPaymentData({ ...paymentData, payment_type: e.target.value })}
+                        onChange={(e) => {
+                          const newType = e.target.value
+                          let newAmount = ''
+                          // Auto-calculate amount for advance payments
+                          if (newType === 'advance' && selectedParent) {
+                            const monthlyFee = parseFloat(selectedParent.monthly_fee_amount || 0)
+                            const months = parseInt(paymentData.months_advance || 1)
+                            newAmount = (monthlyFee * months).toFixed(2)
+                          }
+                          setPaymentData({ ...paymentData, payment_type: newType, amount: newAmount })
+                        }}
                         className="input text-sm sm:text-base"
                       >
-                        <option value="normal">Pay Current Month</option>
-                        <option value="partial">Partial Payment</option>
+                        {parentFee?.status !== 'paid' && (
+                          <>
+                            <option value="normal">Pay Current Month</option>
+                            <option value="partial">Partial Payment</option>
+                          </>
+                        )}
                         <option value="advance">Advance Payment</option>
                       </select>
+                      {parentFee?.status === 'paid' && (
+                        <p className="text-xs text-blue-600 mt-1">This month is already fully paid. You can make an Advance Payment for future months.</p>
+                      )}
                     </div>
 
                     {paymentData.payment_type === 'advance' && (
@@ -585,9 +647,23 @@ export default function CollectFee() {
                           type="number"
                           min="1"
                           value={paymentData.months_advance}
-                          onChange={(e) => setPaymentData({ ...paymentData, months_advance: e.target.value })}
+                          onChange={(e) => {
+                            const months = parseInt(e.target.value) || 1
+                            const monthlyFee = parseFloat(selectedParent?.monthly_fee_amount || 0)
+                            const calculatedAmount = (monthlyFee * months).toFixed(2)
+                            setPaymentData({ 
+                              ...paymentData, 
+                              months_advance: months,
+                              amount: calculatedAmount
+                            })
+                          }}
                           className="input text-sm sm:text-base"
                         />
+                        {selectedParent && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Monthly Fee: ${parseFloat(selectedParent.monthly_fee_amount).toFixed(2)} × {paymentData.months_advance} month(s) = ${(parseFloat(selectedParent.monthly_fee_amount) * parseInt(paymentData.months_advance || 1)).toFixed(2)}
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -600,16 +676,46 @@ export default function CollectFee() {
                           step="0.01"
                           required
                           min="0.01"
-                          max={paymentData.payment_type === 'advance' ? undefined : parentFee.total_due_this_month}
+                          max={paymentData.payment_type === 'advance' ? undefined : (() => {
+                            if (!parentFee) return undefined
+                            const feePaid = parseFloat(parentFee.amount_paid_this_month || 0)
+                            const feeTotalDue = parseFloat(parentFee.total_due_this_month || 0)
+                            return feeTotalDue - feePaid
+                          })()}
                           value={paymentData.amount}
-                          onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setPaymentData({ ...paymentData, amount: value })
+                          }}
                           className="input pl-9 sm:pl-10 text-sm sm:text-base"
                           placeholder="Enter amount"
                         />
                       </div>
-                      {paymentData.payment_type !== 'advance' && (
+                      {paymentData.payment_type === 'advance' && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          Enter the total amount you want to pay in advance. This will be applied to future months.
+                        </p>
+                      )}
+                      {paymentData.payment_type !== 'advance' && parentFee && (
                         <p className="text-xs text-gray-500 mt-1">
-                          Maximum: ${parseFloat(parentFee.total_due_this_month || 0).toLocaleString()}
+                          {(() => {
+                            const feePaid = parseFloat(parentFee.amount_paid_this_month || 0)
+                            const feeTotalDue = parseFloat(parentFee.total_due_this_month || 0)
+                            const remainingDue = feeTotalDue - feePaid
+                            if (paymentData.payment_type === 'partial') {
+                              return `Maximum for partial: $${remainingDue.toFixed(2)} (must be less than remaining due)`
+                            }
+                            return `Maximum: $${remainingDue.toFixed(2)} (remaining due this month)`
+                          })()}
+                        </p>
+                      )}
+                      {paymentData.payment_type === 'partial' && parentFee && parseFloat(paymentData.amount || 0) >= (() => {
+                        const feePaid = parseFloat(parentFee.amount_paid_this_month || 0)
+                        const feeTotalDue = parseFloat(parentFee.total_due_this_month || 0)
+                        return feeTotalDue - feePaid
+                      })() && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Partial payment must be less than remaining due. Use normal payment for full amount.
                         </p>
                       )}
                     </div>

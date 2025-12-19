@@ -10,33 +10,95 @@ const upload = multer({ dest: 'uploads/' });
 // Get all parents
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { search, page = 1, limit = 50 } = req.query;
+    const { search, page = 1, limit = 50, month_id, status } = req.query;
     const offset = (page - 1) * limit;
 
-    // Optimized query - use JOIN instead of correlated subquery
-    let query = `
-      SELECT 
-        p.*,
-        COALESCE(SUM(pmf.outstanding_after_payment), 0) as total_outstanding,
-        MAX(CASE WHEN bm.is_active = true THEN pmf.status END) as current_month_status
-      FROM parents p
-      LEFT JOIN parent_month_fee pmf ON pmf.parent_id = p.id
-      LEFT JOIN billing_months bm ON pmf.billing_month_id = bm.id
-    `;
-
+    // Build query based on filters
+    let query;
     const params = [];
-    if (search) {
-      query += ` WHERE p.parent_name ILIKE $${params.length + 1} OR p.phone_number ILIKE $${params.length + 1}`;
-      params.push(`%${search}%`);
+    let paramIndex = 1;
+
+    // If filtering by month_id, use a different approach
+    if (month_id) {
+      query = `
+        SELECT DISTINCT
+          p.*,
+          COALESCE(
+            (SELECT SUM(outstanding_after_payment) 
+             FROM parent_month_fee 
+             WHERE parent_id = p.id), 
+            0
+          ) as total_outstanding,
+          pmf.status as current_month_status
+        FROM parents p
+        INNER JOIN parent_month_fee pmf ON pmf.parent_id = p.id
+        WHERE pmf.billing_month_id = $${paramIndex}
+      `;
+      params.push(parseInt(month_id));
+      paramIndex++;
+
+      if (search) {
+        query += ` AND (p.parent_name ILIKE $${paramIndex} OR p.phone_number ILIKE $${paramIndex})`;
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      if (status && status !== 'all') {
+        if (status === 'outstanding') {
+          query += ` AND pmf.outstanding_after_payment > 0`;
+        } else {
+          query += ` AND pmf.status = $${paramIndex}`;
+          params.push(status);
+          paramIndex++;
+        }
+      }
+    } else {
+      // Original query without month filter
+      query = `
+        SELECT 
+          p.*,
+          COALESCE(SUM(pmf.outstanding_after_payment), 0) as total_outstanding,
+          MAX(CASE WHEN bm.is_active = true THEN pmf.status END) as current_month_status
+        FROM parents p
+        LEFT JOIN parent_month_fee pmf ON pmf.parent_id = p.id
+        LEFT JOIN billing_months bm ON pmf.billing_month_id = bm.id
+      `;
+
+      const conditions = [];
+
+      if (search) {
+        conditions.push(`(p.parent_name ILIKE $${paramIndex} OR p.phone_number ILIKE $${paramIndex})`);
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      if (status && status !== 'all' && status !== 'outstanding') {
+        conditions.push(`pmf.status = $${paramIndex}`);
+        params.push(status);
+        paramIndex++;
+      }
+
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(' AND ')}`;
+      }
+
+      query += ` GROUP BY p.id, p.parent_name, p.phone_number, p.number_of_children, p.monthly_fee_amount, p.created_at, p.updated_at`;
+
+      if (status === 'outstanding') {
+        query += ` HAVING COALESCE(SUM(pmf.outstanding_after_payment), 0) > 0`;
+      } else if (status && status !== 'all') {
+        query += ` HAVING MAX(CASE WHEN bm.is_active = true THEN pmf.status END) = $${paramIndex}`;
+        params.push(status);
+        paramIndex++;
+      }
     }
 
-    query += ` GROUP BY p.id, p.parent_name, p.phone_number, p.number_of_children, p.monthly_fee_amount, p.created_at, p.updated_at 
-               ORDER BY p.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    query += ` ORDER BY p.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit), parseInt(offset));
 
     const result = await pool.query(query, params);
 
-    // Get total count
+    // Get total count (simplified for now)
     const countQuery = search
       ? 'SELECT COUNT(*) FROM parents WHERE parent_name ILIKE $1 OR phone_number ILIKE $1'
       : 'SELECT COUNT(*) FROM parents';
@@ -51,6 +113,11 @@ router.get('/', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Get parents error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      query: req.query
+    });
     res.status(500).json({ 
       error: 'Failed to fetch parents',
       message: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -61,9 +128,92 @@ router.get('/', authenticateToken, async (req, res) => {
 // Export all parents to Excel
 router.get('/export', authenticateToken, async (req, res) => {
   try {
-    // Step 1: Get all parents (simple query first)
-    const parentsQuery = await pool.query('SELECT * FROM parents ORDER BY created_at DESC');
-    const allParents = parentsQuery.rows || [];
+    const { month_id, status, search } = req.query;
+
+    // Build query to get filtered parents
+    let parentsQuery;
+    const params = [];
+    let paramIndex = 1;
+
+    // If filtering by month_id, use a different approach
+    if (month_id) {
+      parentsQuery = `
+        SELECT DISTINCT
+          p.*,
+          COALESCE(
+            (SELECT SUM(outstanding_after_payment) 
+             FROM parent_month_fee 
+             WHERE parent_id = p.id), 
+            0
+          ) as total_outstanding,
+          pmf.status as current_month_status
+        FROM parents p
+        INNER JOIN parent_month_fee pmf ON pmf.parent_id = p.id
+        WHERE pmf.billing_month_id = $${paramIndex}
+      `;
+      params.push(parseInt(month_id));
+      paramIndex++;
+
+      if (search) {
+        parentsQuery += ` AND (p.parent_name ILIKE $${paramIndex} OR p.phone_number ILIKE $${paramIndex})`;
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      if (status && status !== 'all') {
+        if (status === 'outstanding') {
+          parentsQuery += ` AND pmf.outstanding_after_payment > 0`;
+        } else {
+          parentsQuery += ` AND pmf.status = $${paramIndex}`;
+          params.push(status);
+          paramIndex++;
+        }
+      }
+    } else {
+      // Original query without month filter
+      parentsQuery = `
+        SELECT DISTINCT
+          p.*,
+          COALESCE(SUM(pmf.outstanding_after_payment), 0) as total_outstanding,
+          MAX(CASE WHEN bm.is_active = true THEN pmf.status END) as current_month_status
+        FROM parents p
+        LEFT JOIN parent_month_fee pmf ON pmf.parent_id = p.id
+        LEFT JOIN billing_months bm ON pmf.billing_month_id = bm.id
+      `;
+
+      const conditions = [];
+
+      if (search) {
+        conditions.push(`(p.parent_name ILIKE $${paramIndex} OR p.phone_number ILIKE $${paramIndex})`);
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      if (status && status !== 'all' && status !== 'outstanding') {
+        conditions.push(`pmf.status = $${paramIndex}`);
+        params.push(status);
+        paramIndex++;
+      }
+
+      if (conditions.length > 0) {
+        parentsQuery += ` WHERE ${conditions.join(' AND ')}`;
+      }
+
+      parentsQuery += ` GROUP BY p.id, p.parent_name, p.phone_number, p.number_of_children, p.monthly_fee_amount, p.created_at, p.updated_at`;
+
+      if (status === 'outstanding') {
+        parentsQuery += ` HAVING COALESCE(SUM(pmf.outstanding_after_payment), 0) > 0`;
+      } else if (status && status !== 'all') {
+        parentsQuery += ` HAVING MAX(CASE WHEN bm.is_active = true THEN pmf.status END) = $${paramIndex}`;
+        params.push(status);
+        paramIndex++;
+      }
+    }
+
+    parentsQuery += ` ORDER BY p.created_at DESC`;
+
+    const parentsResult = await pool.query(parentsQuery, params);
+    const allParents = parentsResult.rows || [];
 
     if (!allParents || allParents.length === 0) {
       return res.status(404).json({ error: 'No parents found to export' });
@@ -82,61 +232,103 @@ router.get('/export', authenticateToken, async (req, res) => {
       outstandingMap[row.parent_id] = parseFloat(row.total_outstanding || 0);
     });
 
-    // Step 3: Get current month status for each parent
-    const statusQuery = await pool.query(`
-      SELECT 
-        pmf.parent_id,
-        pmf.status
-      FROM parent_month_fee pmf
-      JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      WHERE bm.is_active = true
-    `);
+    // Step 3: Get status for selected month or current month
+    let statusQuery;
+    if (month_id) {
+      statusQuery = await pool.query(`
+        SELECT 
+          pmf.parent_id,
+          pmf.status,
+          pmf.outstanding_after_payment
+        FROM parent_month_fee pmf
+        WHERE pmf.billing_month_id = $1
+      `, [parseInt(month_id)]);
+    } else {
+      statusQuery = await pool.query(`
+        SELECT 
+          pmf.parent_id,
+          pmf.status,
+          pmf.outstanding_after_payment
+        FROM parent_month_fee pmf
+        JOIN billing_months bm ON pmf.billing_month_id = bm.id
+        WHERE bm.is_active = true
+      `);
+    }
     const statusMap = {};
     statusQuery.rows.forEach(row => {
       statusMap[row.parent_id] = row.status;
     });
 
-    // Step 4: Prepare data for Excel
+    // Step 4: Prepare data for Excel with proper formatting
     const excelData = allParents.map(parent => ({
       'ID': parent.id || '',
       'Parent Name': parent.parent_name || '',
       'Phone Number': parent.phone_number || '',
       'Number of Children': parent.number_of_children || 0,
-      'Monthly Fee': parseFloat(parent.monthly_fee_amount || 0).toFixed(2),
-      'Total Outstanding': (outstandingMap[parent.id] || 0).toFixed(2),
-      'Current Status': statusMap[parent.id] || 'N/A',
-      'Date Added': parent.created_at ? new Date(parent.created_at).toLocaleDateString() : ''
+      'Monthly Fee': parseFloat(parent.monthly_fee_amount || 0),
+      'Total Outstanding': parseFloat(outstandingMap[parent.id] || 0),
+      'Status': statusMap[parent.id] || 'N/A',
+      'Date Added': parent.created_at ? new Date(parent.created_at).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : ''
     }));
 
-    // Step 5: Create workbook
+    // Add summary row
+    const totalMonthlyFee = allParents.reduce((sum, p) => sum + parseFloat(p.monthly_fee_amount || 0), 0);
+    const totalOutstanding = allParents.reduce((sum, p) => sum + parseFloat(outstandingMap[p.id] || 0), 0);
+    excelData.push({
+      'ID': '',
+      'Parent Name': 'TOTAL',
+      'Phone Number': '',
+      'Number of Children': allParents.length,
+      'Monthly Fee': totalMonthlyFee,
+      'Total Outstanding': totalOutstanding,
+      'Status': '',
+      'Date Added': ''
+    });
+
+    // Step 5: Create workbook with proper structure
     const workbook = xlsx.utils.book_new();
+    
+    // Create worksheet from data
     const worksheet = xlsx.utils.json_to_sheet(excelData);
     
-    // Set column widths
+    // Set column widths for better readability
     worksheet['!cols'] = [
-      { wch: 8 },  // ID
-      { wch: 25 }, // Parent Name
-      { wch: 15 }, // Phone Number
-      { wch: 18 }, // Number of Children
-      { wch: 15 }, // Monthly Fee
-      { wch: 18 }, // Total Outstanding
-      { wch: 15 }, // Current Status
-      { wch: 15 }  // Date Added
+      { wch: 8 },   // ID
+      { wch: 30 },  // Parent Name
+      { wch: 18 },  // Phone Number
+      { wch: 18 },  // Number of Children
+      { wch: 15 },  // Monthly Fee
+      { wch: 18 },  // Total Outstanding
+      { wch: 15 },  // Status
+      { wch: 15 }   // Date Added
     ];
 
-    xlsx.utils.book_append_sheet(workbook, worksheet, 'All Parents');
+    // Add worksheet to workbook
+    xlsx.utils.book_append_sheet(workbook, worksheet, 'Parents');
 
-    // Step 6: Generate buffer
-    const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    // Step 6: Generate buffer with proper options
+    const buffer = xlsx.write(workbook, { 
+      type: 'buffer', 
+      bookType: 'xlsx',
+      compression: true
+    });
 
     if (!buffer || buffer.length === 0) {
       throw new Error('Failed to generate Excel buffer');
     }
 
-    // Step 7: Set headers and send
-    const filename = `all_parents_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    // Step 7: Set headers and send with proper encoding
+    let filename = `Parents_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    if (month_id || (status && status !== 'all')) {
+      const statusName = status && status !== 'all' ? status.charAt(0).toUpperCase() + status.slice(1) : '';
+      const monthInfo = month_id ? `Month_${month_id}_` : '';
+      filename = `Parents_${statusName ? statusName + '_' : ''}${monthInfo}Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    }
+    
+    // Set proper headers for Excel file download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', buffer.length);
 
     res.send(buffer);
   } catch (error) {

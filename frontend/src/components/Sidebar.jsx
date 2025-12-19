@@ -12,20 +12,22 @@ import {
   ChevronRightIcon,
   AcademicCapIcon,
   BanknotesIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  PresentationChartLineIcon
 } from '@heroicons/react/24/outline'
 
 // All navigation items with role requirements
 const allNavigation = [
-  { name: 'Dashboard', href: '/', icon: HomeIcon, roles: ['admin', 'cashier'] },
+  { name: 'Dashboard', href: '/', icon: HomeIcon, roles: ['admin'] },
   { name: 'Parents', href: '/parents', icon: UsersIcon, roles: ['admin', 'cashier'] },
   { name: 'Collect Fee', href: '/collect-fee', icon: CurrencyDollarIcon, roles: ['admin', 'cashier'] },
   { name: 'Teachers', href: '/teachers', icon: AcademicCapIcon, roles: ['admin'] },
   { name: 'Pay Teacher Salary', href: '/pay-teacher-salary', icon: BanknotesIcon, roles: ['admin'] },
   { name: 'Expenses', href: '/expenses', icon: DocumentTextIcon, roles: ['admin'] },
   { name: 'Month Setup', href: '/month-setup', icon: CalendarIcon, roles: ['admin'] },
-  { name: 'Reports', href: '/reports', icon: ChartBarIcon, roles: ['admin', 'cashier'] },
+  { name: 'Reports', href: '/reports', icon: ChartBarIcon, roles: ['admin'] },
   { name: 'Users', href: '/users', icon: UserGroupIcon, roles: ['admin'] },
+  { name: 'User Monitoring', href: '/user-monitoring', icon: PresentationChartLineIcon, roles: ['admin'] },
 ]
 
 export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }) {

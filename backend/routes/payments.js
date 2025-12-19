@@ -56,11 +56,33 @@ router.post('/', authenticateToken, async (req, res) => {
 
       fee = feeResult.rows[0];
 
-      // Check if month is already fully paid (for normal payments)
-      if (payment_type === 'normal' && fee.status === 'paid') {
+      // STRICT VALIDATION: Check if month is already fully paid (only for normal/partial payments)
+      // Advance payments are always allowed, even if month is paid
+      if (fee.status === 'paid' && payment_type !== 'advance') {
         await client.query('ROLLBACK');
         return res.status(400).json({ 
-          error: 'Fee for this month is already fully paid. Only outstanding or advance payments are allowed.' 
+          error: 'This month is already fully paid. Please select Advance Payment to pay for future months.' 
+        });
+      }
+
+      // STRICT VALIDATION: For normal payments, check if amount exceeds monthly due
+      const paymentAmount = parseFloat(amount);
+      const feePaid = parseFloat(fee.amount_paid_this_month || 0);
+      const feeTotalDue = parseFloat(fee.total_due_this_month || 0);
+      const remainingDue = feeTotalDue - feePaid;
+
+      if (payment_type === 'normal' && paymentAmount > remainingDue) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: `Amount exceeds this month's payable fee. Select Advance Payment to pay extra. Maximum allowed: $${remainingDue.toFixed(2)}` 
+        });
+      }
+
+      // STRICT VALIDATION: For partial payments, amount must be less than remaining due
+      if (payment_type === 'partial' && paymentAmount >= remainingDue) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: `Partial payment amount must be less than the remaining due ($${remainingDue.toFixed(2)}). Use normal payment for full amount or Advance Payment for extra.` 
         });
       }
     } else {

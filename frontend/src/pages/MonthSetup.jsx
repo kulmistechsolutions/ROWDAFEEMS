@@ -56,7 +56,7 @@ export default function MonthSetup() {
       } else if (!error.response) {
         toast.error('Cannot connect to server. Please check your connection.')
       } else {
-        toast.error('Failed to fetch months')
+      toast.error('Failed to fetch months')
       }
       setMonths([])
     }
