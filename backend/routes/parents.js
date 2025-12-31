@@ -562,45 +562,80 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch } = req.body;
 
-    // Check if branch column exists
+    // Check which columns exist
     let hasBranchColumn = false;
+    let hasStudentStatusColumn = false;
+    
     try {
       const columnCheck = await pool.query(`
         SELECT column_name 
         FROM information_schema.columns 
-        WHERE table_name = 'parents' AND column_name = 'branch'
+        WHERE table_name = 'parents' 
+        AND column_name IN ('branch', 'student_status')
       `);
-      hasBranchColumn = columnCheck.rows.length > 0;
+      hasBranchColumn = columnCheck.rows.some(row => row.column_name === 'branch');
+      hasStudentStatusColumn = columnCheck.rows.some(row => row.column_name === 'student_status');
     } catch (err) {
-      // If check fails, assume column doesn't exist
+      // If check fails, assume columns don't exist
       hasBranchColumn = false;
+      hasStudentStatusColumn = false;
     }
 
-    // Build UPDATE query based on whether branch column exists
+    // Build UPDATE query based on which columns exist
     let updateQuery;
     let params;
+    let paramIndex = 1;
+    const setClauses = [];
     
-    if (hasBranchColumn) {
-      updateQuery = `UPDATE parents 
-       SET parent_name = COALESCE($1, parent_name),
-           phone_number = COALESCE($2, phone_number),
-           number_of_children = COALESCE($3, number_of_children),
-           monthly_fee_amount = COALESCE($4, monthly_fee_amount),
-           student_status = COALESCE($5, student_status),
-           branch = COALESCE($6, branch)
-       WHERE id = $7 RETURNING *`;
-      params = [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch, id];
-    } else {
-      // Branch column doesn't exist - update without it
-      updateQuery = `UPDATE parents 
-       SET parent_name = COALESCE($1, parent_name),
-           phone_number = COALESCE($2, phone_number),
-           number_of_children = COALESCE($3, number_of_children),
-           monthly_fee_amount = COALESCE($4, monthly_fee_amount),
-           student_status = COALESCE($5, student_status)
-       WHERE id = $6 RETURNING *`;
-      params = [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, id];
+    if (parent_name !== undefined) {
+      setClauses.push(`parent_name = COALESCE($${paramIndex}, parent_name)`);
+      params.push(parent_name);
+      paramIndex++;
     }
+    
+    if (phone_number !== undefined) {
+      setClauses.push(`phone_number = COALESCE($${paramIndex}, phone_number)`);
+      params.push(phone_number);
+      paramIndex++;
+    }
+    
+    if (number_of_children !== undefined) {
+      setClauses.push(`number_of_children = COALESCE($${paramIndex}, number_of_children)`);
+      params.push(number_of_children);
+      paramIndex++;
+    }
+    
+    if (monthly_fee_amount !== undefined) {
+      setClauses.push(`monthly_fee_amount = COALESCE($${paramIndex}, monthly_fee_amount)`);
+      params.push(monthly_fee_amount);
+      paramIndex++;
+    }
+    
+    if (hasStudentStatusColumn && student_status !== undefined) {
+      setClauses.push(`student_status = COALESCE($${paramIndex}, student_status)`);
+      params.push(student_status);
+      paramIndex++;
+    }
+    
+    if (hasBranchColumn && branch !== undefined) {
+      setClauses.push(`branch = COALESCE($${paramIndex}, branch)`);
+      params.push(branch);
+      paramIndex++;
+    }
+
+    if (setClauses.length === 0) {
+      // No fields to update, just return current record
+      const currentResult = await pool.query('SELECT * FROM parents WHERE id = $1', [id]);
+      if (currentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Parent not found' });
+      }
+      return res.json(currentResult.rows[0]);
+    }
+
+    params.push(id);
+    updateQuery = `UPDATE parents 
+     SET ${setClauses.join(', ')}
+     WHERE id = $${paramIndex} RETURNING *`;
 
     const result = await pool.query(updateQuery, params);
 
