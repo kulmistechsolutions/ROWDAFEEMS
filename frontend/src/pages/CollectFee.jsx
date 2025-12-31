@@ -420,6 +420,19 @@ export default function CollectFee() {
                 <option value="advanced">Advanced</option>
               </select>
             </div>
+            {/* Branch Filter */}
+            <div className="flex items-center space-x-2">
+              <FunnelIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="input w-full text-sm sm:text-base"
+              >
+                <option value="all">All Branches</option>
+                <option value="Branch 1">Branch 1</option>
+                <option value="Branch 2">Branch 2</option>
+              </select>
+            </div>
           </div>
         </div>
       )}
