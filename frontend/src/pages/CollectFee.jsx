@@ -210,10 +210,6 @@ export default function CollectFee() {
     }
 
     filteredFees.forEach(fee => {
-      const outstanding = parseFloat(fee.outstanding_after_payment || 0)
-      const paid = parseFloat(fee.amount_paid_this_month || 0)
-      const totalDue = parseFloat(fee.total_due_this_month || 0)
-
       // Calculate totals based on actual status (works with any filter combination)
       const outstanding = parseFloat(fee.outstanding_after_payment || 0)
       const paid = parseFloat(fee.amount_paid_this_month || 0)
