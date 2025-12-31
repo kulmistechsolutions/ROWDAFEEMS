@@ -27,43 +27,80 @@ router.get('/summary', authenticateToken, async (req, res) => {
 
     // Add branch filter if provided (only if branch column exists)
     let branchFilter = '';
+    let branchColumnExists = false;
     if (branch && branch !== 'all') {
       // Check if branch column exists before filtering
       try {
         const columnCheck = await pool.query(`
           SELECT column_name 
           FROM information_schema.columns 
-          WHERE table_name = 'parents' AND column_name = 'branch'
+          WHERE table_schema = 'public' 
+            AND table_name = 'parents' 
+            AND column_name = 'branch'
         `);
         if (columnCheck.rows.length > 0) {
-          branchFilter = monthQuery ? 'AND' : 'WHERE';
+          branchColumnExists = true;
+          branchFilter = monthQuery ? ' AND' : ' WHERE';
           branchFilter += ` p.branch = $${paramIndex}`;
           params.push(branch);
+        } else {
+          // Column doesn't exist, skip branch filtering
+          console.warn('Branch column does not exist, skipping branch filter');
         }
       } catch (err) {
         // If check fails, skip branch filtering
         console.warn('Branch column check failed, skipping branch filter:', err.message);
+        branchColumnExists = false;
       }
     }
 
-    // Get summary statistics
-    const summaryResult = await pool.query(
-      `SELECT 
-        COUNT(*) as total_parents,
-        SUM(CASE WHEN pmf.status = 'paid' THEN 1 ELSE 0 END) as paid_count,
-        SUM(CASE WHEN pmf.status = 'unpaid' THEN 1 ELSE 0 END) as unpaid_count,
-        SUM(CASE WHEN pmf.status = 'partial' THEN 1 ELSE 0 END) as partial_count,
-        SUM(CASE WHEN pmf.status = 'advanced' THEN 1 ELSE 0 END) as advanced_count,
-        SUM(pmf.amount_paid_this_month) as total_collected,
-        SUM(pmf.outstanding_after_payment) as total_outstanding,
-        SUM(CASE WHEN pmf.status = 'partial' THEN pmf.outstanding_after_payment ELSE 0 END) as total_partial,
-        SUM(pmf.advance_months_remaining * p.monthly_fee_amount) as total_advance_value
-      FROM parent_month_fee pmf
-      JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      JOIN parents p ON pmf.parent_id = p.id
-      ${monthQuery}${branchFilter}`,
-      params
-    );
+    // Get summary statistics - wrap in try-catch to handle any SQL errors gracefully
+    let summaryResult;
+    try {
+      summaryResult = await pool.query(
+        `SELECT 
+          COUNT(*) as total_parents,
+          SUM(CASE WHEN pmf.status = 'paid' THEN 1 ELSE 0 END) as paid_count,
+          SUM(CASE WHEN pmf.status = 'unpaid' THEN 1 ELSE 0 END) as unpaid_count,
+          SUM(CASE WHEN pmf.status = 'partial' THEN 1 ELSE 0 END) as partial_count,
+          SUM(CASE WHEN pmf.status = 'advanced' THEN 1 ELSE 0 END) as advanced_count,
+          SUM(pmf.amount_paid_this_month) as total_collected,
+          SUM(pmf.outstanding_after_payment) as total_outstanding,
+          SUM(CASE WHEN pmf.status = 'partial' THEN pmf.outstanding_after_payment ELSE 0 END) as total_partial,
+          SUM(pmf.advance_months_remaining * p.monthly_fee_amount) as total_advance_value
+        FROM parent_month_fee pmf
+        JOIN billing_months bm ON pmf.billing_month_id = bm.id
+        JOIN parents p ON pmf.parent_id = p.id
+        ${monthQuery}${branchFilter}`,
+        params
+      );
+    } catch (queryError) {
+      // If query fails due to missing column, retry without branch filter
+      if (queryError.code === '42703' && branchFilter) {
+        console.warn('Query failed due to missing branch column, retrying without branch filter');
+        branchFilter = '';
+        params.pop(); // Remove branch parameter
+        summaryResult = await pool.query(
+          `SELECT 
+            COUNT(*) as total_parents,
+            SUM(CASE WHEN pmf.status = 'paid' THEN 1 ELSE 0 END) as paid_count,
+            SUM(CASE WHEN pmf.status = 'unpaid' THEN 1 ELSE 0 END) as unpaid_count,
+            SUM(CASE WHEN pmf.status = 'partial' THEN 1 ELSE 0 END) as partial_count,
+            SUM(CASE WHEN pmf.status = 'advanced' THEN 1 ELSE 0 END) as advanced_count,
+            SUM(pmf.amount_paid_this_month) as total_collected,
+            SUM(pmf.outstanding_after_payment) as total_outstanding,
+            SUM(CASE WHEN pmf.status = 'partial' THEN pmf.outstanding_after_payment ELSE 0 END) as total_partial,
+            SUM(pmf.advance_months_remaining * p.monthly_fee_amount) as total_advance_value
+          FROM parent_month_fee pmf
+          JOIN billing_months bm ON pmf.billing_month_id = bm.id
+          JOIN parents p ON pmf.parent_id = p.id
+          ${monthQuery}`,
+          params
+        );
+      } else {
+        throw queryError;
+      }
+    }
 
     // Get monthly collection trend (last 12 months)
     const trendResult = await pool.query(
@@ -78,18 +115,40 @@ router.get('/summary', authenticateToken, async (req, res) => {
       LIMIT 12`
     );
 
-    // Get status distribution
-    const distributionResult = await pool.query(
-      `SELECT 
-        pmf.status,
-        COUNT(*) as count
-      FROM parent_month_fee pmf
-      JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      JOIN parents p ON pmf.parent_id = p.id
-      ${monthQuery}${branchFilter}
-      GROUP BY pmf.status`,
-      params
-    );
+    // Get status distribution - use same branchFilter (may be empty if column doesn't exist)
+    let distributionResult;
+    try {
+      distributionResult = await pool.query(
+        `SELECT 
+          pmf.status,
+          COUNT(*) as count
+        FROM parent_month_fee pmf
+        JOIN billing_months bm ON pmf.billing_month_id = bm.id
+        JOIN parents p ON pmf.parent_id = p.id
+        ${monthQuery}${branchFilter}
+        GROUP BY pmf.status`,
+        params
+      );
+    } catch (queryError) {
+      // If query fails due to missing column, retry without branch filter
+      if (queryError.code === '42703' && branchFilter) {
+        console.warn('Distribution query failed due to missing branch column, retrying without branch filter');
+        const retryParams = params.slice(0, branchColumnExists ? params.length - 1 : params.length);
+        distributionResult = await pool.query(
+          `SELECT 
+            pmf.status,
+            COUNT(*) as count
+          FROM parent_month_fee pmf
+          JOIN billing_months bm ON pmf.billing_month_id = bm.id
+          JOIN parents p ON pmf.parent_id = p.id
+          ${monthQuery}
+          GROUP BY pmf.status`,
+          retryParams
+        );
+      } else {
+        throw queryError;
+      }
+    }
 
     // Get teacher salary summary
     const teacherSalarySummary = await pool.query(`
