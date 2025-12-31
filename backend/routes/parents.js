@@ -583,7 +583,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     // Build UPDATE query based on which columns exist
     let updateQuery;
-    let params;
+    let params = [];
     let paramIndex = 1;
     const setClauses = [];
     
