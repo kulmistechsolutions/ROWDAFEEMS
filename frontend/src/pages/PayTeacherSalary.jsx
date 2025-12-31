@@ -10,6 +10,7 @@ export default function PayTeacherSalary() {
   const [salaryRecords, setSalaryRecords] = useState([])
   const [selectedTeacher, setSelectedTeacher] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [departmentFilter, setDepartmentFilter] = useState('all')
   const [paymentData, setPaymentData] = useState({
     amount: '',
     payment_type: 'normal',
@@ -23,11 +24,6 @@ export default function PayTeacherSalary() {
     fetchMonths()
   }, [])
 
-  useEffect(() => {
-    if (selectedMonthId) {
-      fetchSalaryRecords()
-    }
-  }, [selectedMonthId])
 
   useEffect(() => {
     if (!socket) return
@@ -59,7 +55,12 @@ export default function PayTeacherSalary() {
     if (!selectedMonthId) return
     try {
       setLoading(true)
-      const response = await api.get(`/teachers/salary/month/${selectedMonthId}`)
+      const params = new URLSearchParams()
+      if (departmentFilter !== 'all') {
+        params.append('department', departmentFilter)
+      }
+      const url = `/teachers/salary/month/${selectedMonthId}${params.toString() ? '?' + params.toString() : ''}`
+      const response = await api.get(url)
       setSalaryRecords(response.data)
     } catch (error) {
       toast.error('Failed to fetch salary records')
@@ -67,6 +68,13 @@ export default function PayTeacherSalary() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (selectedMonthId) {
+      fetchSalaryRecords()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonthId, departmentFilter])
 
   const handlePayClick = (teacher) => {
     setSelectedTeacher(teacher)
@@ -105,6 +113,7 @@ export default function PayTeacherSalary() {
       unpaid: 'bg-red-100 text-red-800',
       partial: 'bg-orange-100 text-orange-800',
       advance_covered: 'bg-blue-100 text-blue-800',
+      advance_applied: 'bg-purple-100 text-purple-800',
       outstanding: 'bg-yellow-100 text-yellow-800'
     }
     return badges[status] || 'bg-gray-100 text-gray-800'
@@ -119,22 +128,39 @@ export default function PayTeacherSalary() {
         <p className="text-xs sm:text-sm text-gray-500 mt-1">Process monthly salary payments for teachers</p>
       </div>
 
-      {/* Month Selection */}
-      <div className="card p-3 sm:p-4 md:p-6">
-        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Month</label>
-        <select
-          value={selectedMonthId || ''}
-          onChange={(e) => setSelectedMonthId(parseInt(e.target.value))}
-          className="input text-sm sm:text-base"
-        >
-          <option value="">Select a month</option>
-          {months.map(month => (
-            <option key={month.id} value={month.id}>
-              {new Date(month.year, month.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-              {month.is_active && ' (Active)'}
-            </option>
-          ))}
-        </select>
+      {/* Month Selection and Department Filter */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card p-3 sm:p-4 md:p-6">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Month</label>
+          <select
+            value={selectedMonthId || ''}
+            onChange={(e) => setSelectedMonthId(parseInt(e.target.value))}
+            className="input text-sm sm:text-base"
+          >
+            <option value="">Select a month</option>
+            {months.map(month => (
+              <option key={month.id} value={month.id}>
+                {new Date(month.year, month.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                {month.is_active && ' (Active)'}
+              </option>
+            ))}
+          </select>
+        </div>
+        {selectedMonthId && (
+          <div className="card p-3 sm:p-4 md:p-6">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Filter by Department</label>
+            <select
+              value={departmentFilter}
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+              className="input text-sm sm:text-base"
+            >
+              <option value="all">All Departments</option>
+              <option value="Quraan">Quraan</option>
+              <option value="Primary/Middle/Secondary">Primary / Middle / Secondary</option>
+              <option value="Shareeca">Shareeca</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Desktop Table View */}
@@ -155,7 +181,9 @@ export default function PayTeacherSalary() {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salary</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Salary</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Advance Used</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -173,6 +201,12 @@ export default function PayTeacherSalary() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         ${parseFloat(record.monthly_salary).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">
+                        ${parseFloat(record.advance_balance_used || 0).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                        ${parseFloat(record.total_due_this_month).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
                         ${parseFloat(record.amount_paid_this_month || 0).toLocaleString()}
@@ -230,8 +264,18 @@ export default function PayTeacherSalary() {
                 
                 <div className="space-y-2 mb-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Monthly Salary:</span>
+                    <span className="text-gray-600">Original Salary:</span>
                     <span className="font-medium text-gray-900">${parseFloat(record.monthly_salary).toLocaleString()}</span>
+                  </div>
+                  {parseFloat(record.advance_balance_used || 0) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Advance Used:</span>
+                      <span className="font-semibold text-blue-600">${parseFloat(record.advance_balance_used || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Total Due:</span>
+                    <span className="font-medium text-gray-900">${parseFloat(record.total_due_this_month).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Paid:</span>

@@ -71,8 +71,8 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
 
     const newMonth = monthResult.rows[0];
 
-    // Get all parents
-    const parentsResult = await client.query('SELECT * FROM parents');
+    // Get all active parents (exclude suspended)
+    const parentsResult = await client.query("SELECT * FROM parents WHERE student_status = 'active' OR student_status IS NULL");
 
     // Get previous month's data
     const prevMonthResult = await client.query(
@@ -250,13 +250,13 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
             // Advance covers full salary
             advanceBalanceUsed = teacher.monthly_salary;
             totalDue = previousOutstanding; // Only previous outstanding remains
-            status = 'advance_covered';
+            status = previousOutstanding > 0 ? 'advance_applied' : 'advance_covered';
             teacherAdvanceUpdateIds.push(teacherAdvance.id);
           } else {
             // Partial advance - reduce salary by advance amount
             advanceBalanceUsed = advanceAmountPerMonth;
             totalDue = teacher.monthly_salary - advanceAmountPerMonth + previousOutstanding;
-            status = totalDue === 0 ? 'advance_covered' : 'partial';
+            status = totalDue === 0 ? 'advance_covered' : 'advance_applied';
             teacherAdvanceUpdateIds.push(teacherAdvance.id);
           }
         }
@@ -437,8 +437,13 @@ router.get('/:monthId/fees', authenticateToken, async (req, res) => {
     const params = [monthId];
 
     if (status && status !== 'all') {
-      query += ` AND pmf.status = $${params.length + 1}`;
-      params.push(status);
+      if (status === 'outstanding') {
+        // Outstanding: has outstanding balance > 0
+        query += ` AND pmf.outstanding_after_payment > 0`;
+      } else {
+        query += ` AND pmf.status = $${params.length + 1}`;
+        params.push(status);
+      }
     }
 
     if (search) {

@@ -33,6 +33,12 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     const parent = parentResult.rows[0];
+    
+    // Prevent payment collection for suspended students
+    if (parent.student_status === 'suspended') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cannot collect payment for suspended students. Please reactivate the student first.' });
+    }
     const monthResult = await client.query('SELECT * FROM billing_months WHERE id = $1', [billing_month_id]);
     if (monthResult.rows.length === 0) {
       await client.query('ROLLBACK');

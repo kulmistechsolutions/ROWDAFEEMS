@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/month/:monthId', authenticateToken, async (req, res) => {
   try {
     const { monthId } = req.params;
-    const { status, search } = req.query;
+    const { status, search, department } = req.query;
 
     let query = `
       SELECT 
@@ -28,6 +28,11 @@ router.get('/month/:monthId', authenticateToken, async (req, res) => {
     if (status && status !== 'all') {
       query += ` AND tsr.status = $${params.length + 1}`;
       params.push(status);
+    }
+
+    if (department && department !== 'all') {
+      query += ` AND t.department = $${params.length + 1}`;
+      params.push(department);
     }
 
     if (search) {

@@ -509,16 +509,17 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { parent_name, phone_number, number_of_children, monthly_fee_amount } = req.body;
+    const { parent_name, phone_number, number_of_children, monthly_fee_amount, student_status } = req.body;
 
     const result = await pool.query(
       `UPDATE parents 
        SET parent_name = COALESCE($1, parent_name),
            phone_number = COALESCE($2, phone_number),
            number_of_children = COALESCE($3, number_of_children),
-           monthly_fee_amount = COALESCE($4, monthly_fee_amount)
-       WHERE id = $5 RETURNING *`,
-      [parent_name, phone_number, number_of_children, monthly_fee_amount, id]
+           monthly_fee_amount = COALESCE($4, monthly_fee_amount),
+           student_status = COALESCE($5, student_status)
+       WHERE id = $6 RETURNING *`,
+      [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, id]
     );
 
     if (result.rows.length === 0) {

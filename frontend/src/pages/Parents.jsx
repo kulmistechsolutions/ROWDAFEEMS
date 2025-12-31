@@ -30,7 +30,8 @@ export default function Parents() {
     parent_name: '',
     phone_number: '',
     number_of_children: 1,
-    monthly_fee_amount: ''
+    monthly_fee_amount: '',
+    student_status: 'active'
   })
   const navigate = useNavigate()
   const { socket } = useSocket()
@@ -137,7 +138,7 @@ export default function Parents() {
       }
       setShowAddModal(false)
       setEditingParent(null)
-      setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '' })
+      setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '', student_status: 'active' })
       fetchParents()
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to save parent')
@@ -150,7 +151,8 @@ export default function Parents() {
       parent_name: parent.parent_name,
       phone_number: parent.phone_number,
       number_of_children: parent.number_of_children,
-      monthly_fee_amount: parent.monthly_fee_amount
+      monthly_fee_amount: parent.monthly_fee_amount,
+      student_status: parent.student_status || 'active'
     })
     setShowAddModal(true)
   }
@@ -409,6 +411,9 @@ export default function Parents() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Student Status
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
@@ -435,6 +440,15 @@ export default function Parents() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(parent.current_month_status)}`}>
                         {parent.current_month_status || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        (parent.student_status || 'active') === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {(parent.student_status || 'active') === 'active' ? 'Active' : 'Suspended'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -490,9 +504,18 @@ export default function Parents() {
                   </h3>
                   <p className="text-sm text-gray-600 break-all">{parent.phone_number}</p>
                 </div>
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full flex-shrink-0 ml-2 ${getStatusBadge(parent.current_month_status)}`}>
-                  {parent.current_month_status || 'N/A'}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(parent.current_month_status)}`}>
+                    {parent.current_month_status || 'N/A'}
+                  </span>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    (parent.student_status || 'active') === 'active' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {(parent.student_status || 'active') === 'active' ? 'Active' : 'Suspended'}
+                  </span>
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
@@ -590,6 +613,18 @@ export default function Parents() {
                   onChange={(e) => setFormData({ ...formData, monthly_fee_amount: e.target.value })}
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Student Status</label>
+                <select
+                  className="input text-sm sm:text-base"
+                  value={formData.student_status}
+                  onChange={(e) => setFormData({ ...formData, student_status: e.target.value })}
+                >
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Suspended students will not be included in new month billing</p>
+              </div>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
                 <button type="submit" className="flex-1 btn btn-primary text-sm sm:text-base">
                   {editingParent ? 'Update' : 'Add'} Parent
@@ -599,7 +634,7 @@ export default function Parents() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingParent(null)
-                    setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '' })
+                    setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '', student_status: 'active' })
                   }}
                   className="flex-1 btn btn-outline text-sm sm:text-base"
                 >

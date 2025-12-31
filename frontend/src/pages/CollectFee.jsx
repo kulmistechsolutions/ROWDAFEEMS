@@ -167,11 +167,72 @@ export default function CollectFee() {
 
     // Filter by status
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(fee => fee.status === statusFilter)
+      if (statusFilter === 'outstanding') {
+        filtered = filtered.filter(fee => parseFloat(fee.outstanding_after_payment || 0) > 0)
+      } else {
+        filtered = filtered.filter(fee => fee.status === statusFilter)
+      }
     }
 
     return filtered
   }, [allFees, searchQuery, statusFilter])
+
+  // Calculate live totals based on filtered fees
+  const liveTotals = useMemo(() => {
+    if (statusFilter === 'all' || !filteredFees.length) {
+      return null
+    }
+
+    const totals = {
+      paid: {
+        amount: 0,
+        count: 0
+      },
+      unpaid: {
+        amount: 0,
+        count: 0
+      },
+      partial: {
+        paidAmount: 0,
+        remainingBalance: 0,
+        count: 0
+      },
+      outstanding: {
+        amount: 0,
+        count: 0
+      },
+      advanced: {
+        amount: 0,
+        count: 0
+      }
+    }
+
+    filteredFees.forEach(fee => {
+      const outstanding = parseFloat(fee.outstanding_after_payment || 0)
+      const paid = parseFloat(fee.amount_paid_this_month || 0)
+      const totalDue = parseFloat(fee.total_due_this_month || 0)
+
+      if (statusFilter === 'paid' || fee.status === 'paid') {
+        totals.paid.amount += paid
+        totals.paid.count++
+      } else if (statusFilter === 'unpaid' || fee.status === 'unpaid') {
+        totals.unpaid.amount += outstanding
+        totals.unpaid.count++
+      } else if (statusFilter === 'partial' || fee.status === 'partial') {
+        totals.partial.paidAmount += paid
+        totals.partial.remainingBalance += outstanding
+        totals.partial.count++
+      } else if (statusFilter === 'outstanding' || outstanding > 0) {
+        totals.outstanding.amount += outstanding
+        totals.outstanding.count++
+      } else if (statusFilter === 'advanced' || fee.status === 'advanced') {
+        totals.advanced.amount += paid
+        totals.advanced.count++
+      }
+    })
+
+    return totals
+  }, [filteredFees, statusFilter])
 
   const handleSelectParent = (fee) => {
     setSelectedParent({
@@ -348,10 +409,93 @@ export default function CollectFee() {
                 <option value="paid">Paid</option>
                 <option value="unpaid">Unpaid</option>
                 <option value="partial">Partial</option>
+                <option value="outstanding">Outstanding</option>
                 <option value="advanced">Advanced</option>
               </select>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Live Totals Summary */}
+      {selectedMonthId && statusFilter !== 'all' && liveTotals && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {statusFilter === 'paid' && (
+            <>
+              <div className="card p-4 bg-green-50 border border-green-200">
+                <p className="text-xs text-green-600 font-medium mb-1">Total Paid Amount</p>
+                <p className="text-2xl font-bold text-green-700">
+                  ${liveTotals.paid.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-green-50 border border-green-200">
+                <p className="text-xs text-green-600 font-medium mb-1">Number of Paid Students</p>
+                <p className="text-2xl font-bold text-green-700">{liveTotals.paid.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'unpaid' && (
+            <>
+              <div className="card p-4 bg-red-50 border border-red-200">
+                <p className="text-xs text-red-600 font-medium mb-1">Total Outstanding Amount</p>
+                <p className="text-2xl font-bold text-red-700">
+                  ${liveTotals.unpaid.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-red-50 border border-red-200">
+                <p className="text-xs text-red-600 font-medium mb-1">Number of Unpaid Students</p>
+                <p className="text-2xl font-bold text-red-700">{liveTotals.unpaid.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'partial' && (
+            <>
+              <div className="card p-4 bg-orange-50 border border-orange-200">
+                <p className="text-xs text-orange-600 font-medium mb-1">Total Partial Paid Amount</p>
+                <p className="text-2xl font-bold text-orange-700">
+                  ${liveTotals.partial.paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-orange-50 border border-orange-200">
+                <p className="text-xs text-orange-600 font-medium mb-1">Total Remaining Balance</p>
+                <p className="text-2xl font-bold text-orange-700">
+                  ${liveTotals.partial.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-orange-50 border border-orange-200">
+                <p className="text-xs text-orange-600 font-medium mb-1">Number of Partial Students</p>
+                <p className="text-2xl font-bold text-orange-700">{liveTotals.partial.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'outstanding' && (
+            <>
+              <div className="card p-4 bg-yellow-50 border border-yellow-200">
+                <p className="text-xs text-yellow-600 font-medium mb-1">Total Outstanding Amount</p>
+                <p className="text-2xl font-bold text-yellow-700">
+                  ${liveTotals.outstanding.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-yellow-50 border border-yellow-200">
+                <p className="text-xs text-yellow-600 font-medium mb-1">Number of Students with Outstanding</p>
+                <p className="text-2xl font-bold text-yellow-700">{liveTotals.outstanding.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'advanced' && (
+            <>
+              <div className="card p-4 bg-blue-50 border border-blue-200">
+                <p className="text-xs text-blue-600 font-medium mb-1">Total Advance Paid Amount</p>
+                <p className="text-2xl font-bold text-blue-700">
+                  ${liveTotals.advanced.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-blue-50 border border-blue-200">
+                <p className="text-xs text-blue-600 font-medium mb-1">Number of Advanced Students</p>
+                <p className="text-2xl font-bold text-blue-700">{liveTotals.advanced.count}</p>
+              </div>
+            </>
+          )}
         </div>
       )}
 
