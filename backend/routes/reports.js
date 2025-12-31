@@ -133,7 +133,8 @@ router.get('/summary', authenticateToken, async (req, res) => {
       // If query fails due to missing column, retry without branch filter
       if (queryError.code === '42703' && branchFilter) {
         console.warn('Distribution query failed due to missing branch column, retrying without branch filter');
-        const retryParams = params.slice(0, branchColumnExists ? params.length - 1 : params.length);
+        // Remove branch parameter if it was added
+        const retryParams = branchColumnExists ? params.slice(0, -1) : params;
         distributionResult = await pool.query(
           `SELECT 
             pmf.status,
