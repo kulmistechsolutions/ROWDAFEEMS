@@ -17,7 +17,12 @@ router.get('/month/:monthId', authenticateToken, async (req, res) => {
         t.teacher_name,
         t.department,
         t.phone_number,
-        t.monthly_salary as teacher_monthly_salary
+        t.monthly_salary as teacher_monthly_salary,
+        COALESCE((
+          SELECT SUM(tap.amount_per_month * tap.months_remaining)
+          FROM teacher_advance_payments tap
+          WHERE tap.teacher_id = t.id AND tap.months_remaining > 0
+        ), 0) as total_advance_balance
       FROM teacher_salary_records tsr
       JOIN teachers t ON tsr.teacher_id = t.id
       WHERE tsr.billing_month_id = $1
@@ -26,8 +31,14 @@ router.get('/month/:monthId', authenticateToken, async (req, res) => {
     const params = [monthId];
 
     if (status && status !== 'all') {
-      query += ` AND tsr.status = $${params.length + 1}`;
-      params.push(status);
+      // Handle 'advance_applied' filter - status is advance_applied
+      if (status === 'advance_applied') {
+        query += ` AND tsr.status = $${params.length + 1}`;
+        params.push('advance_applied');
+      } else {
+        query += ` AND tsr.status = $${params.length + 1}`;
+        params.push(status);
+      }
     }
 
     if (department && department !== 'all') {
@@ -87,37 +98,14 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
 
     // Get current salary record
     let salaryRecord = null;
-    let salaryResult = null;
+    let salaryResult = await client.query(
+      'SELECT * FROM teacher_salary_records WHERE teacher_id = $1 AND billing_month_id = $2',
+      [teacher_id, billing_month_id]
+    );
 
-    if (payment_type !== 'advance') {
-      salaryResult = await client.query(
-        'SELECT * FROM teacher_salary_records WHERE teacher_id = $1 AND billing_month_id = $2',
-        [teacher_id, billing_month_id]
-      );
-
-      if (salaryResult.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Salary record not found for this month. Please set up the month first.' });
-      }
-
-      salaryRecord = salaryResult.rows[0];
-
-      // Check if month is already fully paid (for normal payments)
-      if (payment_type === 'normal' && salaryRecord.status === 'paid') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          error: 'Salary for this month is already fully paid. Only outstanding or advance payments are allowed.' 
-        });
-      }
-    } else {
-      // For advance payments, get or create salary record for current month if needed
-      salaryResult = await client.query(
-        'SELECT * FROM teacher_salary_records WHERE teacher_id = $1 AND billing_month_id = $2',
-        [teacher_id, billing_month_id]
-      );
-
-      if (salaryResult.rows.length === 0) {
-        // Create a salary record for advance payment tracking
+    if (salaryResult.rows.length === 0) {
+      // Create a salary record if it doesn't exist (for advance payments)
+      if (payment_type === 'advance') {
         const insertResult = await client.query(
           `INSERT INTO teacher_salary_records (teacher_id, billing_month_id, monthly_salary, total_due_this_month, amount_paid_this_month, outstanding_after_payment, status)
            VALUES ($1, $2, $3, $3, 0, $3, 'unpaid') RETURNING *`,
@@ -125,9 +113,16 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
         );
         salaryRecord = insertResult.rows[0];
       } else {
-        salaryRecord = salaryResult.rows[0];
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Salary record not found for this month. Please set up the month first.' });
       }
+    } else {
+      salaryRecord = salaryResult.rows[0];
     }
+
+    const currentStatus = salaryRecord.status;
+    const currentOutstanding = parseFloat(salaryRecord.outstanding_after_payment || 0);
+    const monthlySalary = parseFloat(teacher.monthly_salary);
 
     let paymentType = payment_type || 'normal';
     let remainingBalance = 0;
@@ -135,20 +130,32 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
     let newOutstanding = salaryRecord.outstanding_after_payment;
     let newPaid = salaryRecord.amount_paid_this_month;
     let advanceMonths = 0;
+    let advanceAmount = 0;
 
-    // Handle different payment types
+    // Handle different payment scenarios
     if (payment_type === 'advance' && months_advance) {
-      // Advance payment
+      // Explicit advance payment
       paymentType = 'advance';
       advanceMonths = months_advance;
-      newStatus = 'advanced';
-      newPaid = parseFloat(newPaid) + parseFloat(amount);
+      advanceAmount = parseFloat(amount);
+      
+      // Add advance amount to paid (for tracking)
+      newPaid = parseFloat(newPaid) + advanceAmount;
+      // Outstanding remains the same (advance doesn't reduce current month's outstanding)
       newOutstanding = parseFloat(newOutstanding);
+      
+      // If already paid, keep status as 'paid', otherwise set to 'advanced'
+      if (currentStatus === 'paid') {
+        newStatus = 'paid'; // Stay paid, advance is separate
+      } else {
+        newStatus = 'advanced';
+      }
     } else if (payment_type === 'partial') {
-      // Partial payment
+      // Partial payment - complete remaining or partial amount
       paymentType = 'partial';
-      newPaid = parseFloat(newPaid) + parseFloat(amount);
-      newOutstanding = parseFloat(salaryRecord.outstanding_after_payment) - parseFloat(amount);
+      const paymentAmount = parseFloat(amount);
+      newPaid = parseFloat(newPaid) + paymentAmount;
+      newOutstanding = parseFloat(currentOutstanding) - paymentAmount;
       remainingBalance = newOutstanding;
 
       if (newOutstanding <= 0) {
@@ -158,11 +165,30 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
         newStatus = 'partial';
       }
     } else {
-      // Normal payment (full)
-      paymentType = 'normal';
-      newPaid = parseFloat(salaryRecord.total_due_this_month);
-      newOutstanding = 0;
-      newStatus = 'paid';
+      // Normal payment - handle Scenario A: if already paid, treat as advance
+      if (currentStatus === 'paid' && currentOutstanding === 0) {
+        // Scenario A: Already fully paid, any additional payment is advance
+        // Require months_advance for advance payments
+        if (!months_advance || months_advance <= 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ 
+            error: 'Salary is already fully paid. Please specify "Months in Advance" to give advance payment.' 
+          });
+        }
+        
+        paymentType = 'advance';
+        advanceMonths = months_advance;
+        advanceAmount = parseFloat(amount);
+        newPaid = parseFloat(newPaid) + advanceAmount;
+        newOutstanding = 0; // Still fully paid
+        newStatus = 'paid'; // Status remains paid
+      } else {
+        // Normal full payment
+        paymentType = 'normal';
+        newPaid = parseFloat(salaryRecord.total_due_this_month);
+        newOutstanding = 0;
+        newStatus = 'paid';
+      }
     }
 
     // Create payment record
@@ -174,12 +200,12 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
 
     const payment = paymentResult.rows[0];
 
-    // Create advance payment record if needed
-    if (payment_type === 'advance' && months_advance) {
+    // Create advance payment record if needed (for any advance payment)
+    if (paymentType === 'advance' && advanceMonths > 0) {
       await client.query(
         `INSERT INTO teacher_advance_payments (teacher_id, payment_id, months_paid, months_remaining, amount_per_month)
          VALUES ($1, $2, $3, $3, $4)`,
-        [teacher_id, payment.id, months_advance, parseFloat(amount) / months_advance]
+        [teacher_id, payment.id, advanceMonths, advanceAmount / advanceMonths]
       );
     }
 

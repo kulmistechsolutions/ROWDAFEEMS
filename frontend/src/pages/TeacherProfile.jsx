@@ -75,6 +75,7 @@ export default function TeacherProfile() {
       unpaid: 'bg-red-100 text-red-800',
       partial: 'bg-orange-100 text-orange-800',
       advance_covered: 'bg-blue-100 text-blue-800',
+      advance_applied: 'bg-purple-100 text-purple-800',
       outstanding: 'bg-yellow-100 text-yellow-800'
     }
     return badges[status] || 'bg-gray-100 text-gray-800'
@@ -133,11 +134,16 @@ export default function TeacherProfile() {
                       {new Date(record.year, record.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                     </p>
                     <div className="mt-2 space-y-1 text-sm">
-                      <p>Salary: ${parseFloat(record.monthly_salary).toLocaleString()}</p>
-                      <p>Paid: <span className="text-green-600">${parseFloat(record.amount_paid_this_month || 0).toLocaleString()}</span></p>
-                      <p>Outstanding: <span className="text-red-600">${parseFloat(record.outstanding_after_payment || 0).toLocaleString()}</span></p>
-                      {record.advance_balance_used > 0 && (
-                        <p className="text-blue-600">Advance Used: ${parseFloat(record.advance_balance_used).toLocaleString()}</p>
+                      <p>Monthly Salary: ${parseFloat(record.monthly_salary).toLocaleString()}</p>
+                      {parseFloat(record.advance_balance_used || 0) > 0 && (
+                        <p className="text-blue-600 font-semibold">✓ Advance Deducted: ${parseFloat(record.advance_balance_used).toLocaleString()}</p>
+                      )}
+                      <p>Total Due: ${parseFloat(record.total_due_this_month || 0).toLocaleString()}</p>
+                      <p>Paid: <span className="text-green-600 font-semibold">${parseFloat(record.amount_paid_this_month || 0).toLocaleString()}</span></p>
+                      {parseFloat(record.outstanding_after_payment || 0) > 0 ? (
+                        <p>Outstanding: <span className="text-red-600 font-semibold">${parseFloat(record.outstanding_after_payment).toLocaleString()}</span></p>
+                      ) : (
+                        <p className="text-green-600">✓ Fully Paid</p>
                       )}
                     </div>
                   </div>
@@ -167,7 +173,9 @@ export default function TeacherProfile() {
                     </p>
                     <div className="mt-2 space-y-1 text-sm text-gray-600">
                       <p>Amount: <span className="font-semibold text-green-600">${parseFloat(payment.amount).toLocaleString()}</span></p>
-                      <p>Type: <span className="capitalize">{payment.payment_type}</span></p>
+                      <p>Type: <span className={`capitalize font-semibold ${payment.payment_type === 'advance' ? 'text-blue-600' : payment.payment_type === 'partial' ? 'text-orange-600' : 'text-gray-700'}`}>
+                        {payment.payment_type === 'advance' ? '🔵 Advance Payment' : payment.payment_type === 'partial' ? '🟠 Partial Payment' : '✅ Normal Payment'}
+                      </span></p>
                       <p>Date: {new Date(payment.payment_date).toLocaleDateString()}</p>
                       <p>Paid By: {payment.paid_by_name}</p>
                       {payment.notes && <p className="text-gray-500 italic">Note: {payment.notes}</p>}

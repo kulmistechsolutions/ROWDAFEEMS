@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { useSocket } from '../contexts/SocketContext'
-import { MagnifyingGlassIcon, CurrencyDollarIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, CurrencyDollarIcon, XMarkIcon, FunnelIcon } from '@heroicons/react/24/outline'
 
 export default function PayTeacherSalary() {
   const [months, setMonths] = useState([])
@@ -11,6 +11,8 @@ export default function PayTeacherSalary() {
   const [selectedTeacher, setSelectedTeacher] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [departmentFilter, setDepartmentFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [paymentData, setPaymentData] = useState({
     amount: '',
     payment_type: 'normal',
@@ -59,6 +61,12 @@ export default function PayTeacherSalary() {
       if (departmentFilter !== 'all') {
         params.append('department', departmentFilter)
       }
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter)
+      }
+      if (searchQuery.trim()) {
+        params.append('search', searchQuery.trim())
+      }
       const url = `/teachers/salary/month/${selectedMonthId}${params.toString() ? '?' + params.toString() : ''}`
       const response = await api.get(url)
       setSalaryRecords(response.data)
@@ -74,44 +82,22 @@ export default function PayTeacherSalary() {
       fetchSalaryRecords()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonthId, departmentFilter])
+  }, [selectedMonthId, departmentFilter, statusFilter, searchQuery])
 
   const handlePayClick = (teacher) => {
     setSelectedTeacher(teacher)
+    const outstanding = parseFloat(teacher.outstanding_after_payment || 0)
+    const isFullyPaid = teacher.status === 'paid' && outstanding === 0
+    
+    // If fully paid, default to advance payment
+    // Otherwise, default to normal/partial based on outstanding
     setPaymentData({
-      amount: teacher.outstanding_after_payment > 0 ? teacher.outstanding_after_payment : teacher.total_due_this_month,
-      payment_type: 'normal',
+      amount: isFullyPaid ? '' : (outstanding > 0 ? outstanding : teacher.total_due_this_month),
+      payment_type: isFullyPaid ? 'advance' : (outstanding > 0 ? 'partial' : 'normal'),
       months_advance: 1,
       notes: ''
     })
     setShowPaymentModal(true)
-  }
-
-  const handleQuickPay = async (teacher) => {
-    if (!window.confirm(`Mark ${teacher.teacher_name}'s salary as fully paid for this month?`)) {
-      return
-    }
-
-    try {
-      setLoading(true)
-      const response = await api.post('/teachers/salary/quick-pay', {
-        teacher_id: teacher.teacher_id,
-        billing_month_id: selectedMonthId,
-        notes: 'Quick Pay - Marked as Paid'
-      })
-      toast.success(response.data.message || 'Salary marked as fully paid')
-      fetchSalaryRecords()
-    } catch (error) {
-      if (error.response?.data?.already_paid) {
-        // If already paid, open advance payment modal
-        handlePayClick(teacher)
-        setPaymentData(prev => ({ ...prev, payment_type: 'advance' }))
-      } else {
-        toast.error(error.response?.data?.error || 'Failed to process payment')
-      }
-    } finally {
-      setLoading(false)
-    }
   }
 
   const handlePaymentSubmit = async (e) => {
@@ -146,6 +132,53 @@ export default function PayTeacherSalary() {
     return badges[status] || 'bg-gray-100 text-gray-800'
   }
 
+  // Calculate live totals based on filtered salary records
+  const liveTotals = useMemo(() => {
+    if (!salaryRecords.length) {
+      return null
+    }
+
+    const totals = {
+      totalSalary: 0,
+      totalPaid: 0,
+      totalOutstanding: 0,
+      totalAdvanceBalance: 0,
+      paid: { amount: 0, count: 0 },
+      unpaid: { amount: 0, count: 0 },
+      partial: { amount: 0, outstanding: 0, count: 0 },
+      advance_applied: { amount: 0, count: 0 }
+    }
+
+    salaryRecords.forEach(record => {
+      const monthlySalary = parseFloat(record.monthly_salary || 0)
+      const paid = parseFloat(record.amount_paid_this_month || 0)
+      const outstanding = parseFloat(record.outstanding_after_payment || 0)
+      const advanceBalance = parseFloat(record.total_advance_balance || 0)
+
+      totals.totalSalary += monthlySalary
+      totals.totalPaid += paid
+      totals.totalOutstanding += outstanding
+      totals.totalAdvanceBalance += advanceBalance
+
+      if (record.status === 'paid') {
+        totals.paid.amount += paid
+        totals.paid.count++
+      } else if (record.status === 'unpaid') {
+        totals.unpaid.amount += outstanding
+        totals.unpaid.count++
+      } else if (record.status === 'partial') {
+        totals.partial.amount += paid
+        totals.partial.outstanding += outstanding
+        totals.partial.count++
+      } else if (record.status === 'advance_applied') {
+        totals.advance_applied.amount += paid
+        totals.advance_applied.count++
+      }
+    })
+
+    return totals
+  }, [salaryRecords])
+
   const selectedMonth = months.find(m => m.id === selectedMonthId)
 
   return (
@@ -155,40 +188,165 @@ export default function PayTeacherSalary() {
         <p className="text-xs sm:text-sm text-gray-500 mt-1">Process monthly salary payments for teachers</p>
       </div>
 
-      {/* Month Selection and Department Filter */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card p-3 sm:p-4 md:p-6">
-          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Month</label>
-          <select
-            value={selectedMonthId || ''}
-            onChange={(e) => setSelectedMonthId(parseInt(e.target.value))}
-            className="input text-sm sm:text-base"
-          >
-            <option value="">Select a month</option>
-            {months.map(month => (
-              <option key={month.id} value={month.id}>
-                {new Date(month.year, month.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                {month.is_active && ' (Active)'}
-              </option>
-            ))}
-          </select>
-        </div>
-        {selectedMonthId && (
-          <div className="card p-3 sm:p-4 md:p-6">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Filter by Department</label>
-            <select
-              value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="input text-sm sm:text-base"
-            >
-              <option value="all">All Departments</option>
-              <option value="Quraan">Quraan</option>
-              <option value="Primary/Middle/Secondary">Primary / Middle / Secondary</option>
-              <option value="Shareeca">Shareeca</option>
-            </select>
-          </div>
-        )}
+      {/* Month Selection */}
+      <div className="card p-3 sm:p-4 md:p-6">
+        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Select Month</label>
+        <select
+          value={selectedMonthId || ''}
+          onChange={(e) => setSelectedMonthId(parseInt(e.target.value))}
+          className="input text-sm sm:text-base"
+        >
+          <option value="">Select a month</option>
+          {months.map(month => (
+            <option key={month.id} value={month.id}>
+              {new Date(month.year, month.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              {month.is_active && ' (Active)'}
+            </option>
+          ))}
+        </select>
       </div>
+
+      {/* Filters and Search */}
+      {selectedMonthId && (
+        <div className="card p-4 sm:p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+            {/* Search */}
+            <div className="flex-1 relative">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input pl-9 sm:pl-10 text-sm sm:text-base w-full"
+              />
+            </div>
+            {/* Department Filter */}
+            <div className="flex items-center space-x-2">
+              <FunnelIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="input w-full text-sm sm:text-base"
+              >
+                <option value="all">All Departments</option>
+                <option value="Quraan">Quraan</option>
+                <option value="Primary/Middle/Secondary">Primary / Middle / Secondary</option>
+                <option value="Shareeca">Shareeca</option>
+              </select>
+            </div>
+            {/* Status Filter */}
+            <div className="flex items-center space-x-2">
+              <FunnelIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="input w-full text-sm sm:text-base"
+              >
+                <option value="all">All Status</option>
+                <option value="paid">Paid</option>
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="advance_applied">Advance Applied</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Totals Summary */}
+      {selectedMonthId && (statusFilter !== 'all' || departmentFilter !== 'all') && liveTotals && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {/* General totals */}
+          <div className="card p-4 bg-blue-50 border border-blue-200">
+            <p className="text-xs text-blue-600 font-medium mb-1">Total Salary Amount</p>
+            <p className="text-2xl font-bold text-blue-700">
+              ${liveTotals.totalSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="card p-4 bg-green-50 border border-green-200">
+            <p className="text-xs text-green-600 font-medium mb-1">Total Paid</p>
+            <p className="text-2xl font-bold text-green-700">
+              ${liveTotals.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="card p-4 bg-red-50 border border-red-200">
+            <p className="text-xs text-red-600 font-medium mb-1">Total Outstanding</p>
+            <p className="text-2xl font-bold text-red-700">
+              ${liveTotals.totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="card p-4 bg-purple-50 border border-purple-200">
+            <p className="text-xs text-purple-600 font-medium mb-1">Total Advance Balance</p>
+            <p className="text-2xl font-bold text-purple-700">
+              ${liveTotals.totalAdvanceBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          {/* Status-specific totals */}
+          {statusFilter === 'paid' && liveTotals.paid.count > 0 && (
+            <>
+              <div className="card p-4 bg-green-50 border border-green-200">
+                <p className="text-xs text-green-600 font-medium mb-1">Paid Amount</p>
+                <p className="text-2xl font-bold text-green-700">
+                  ${liveTotals.paid.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-green-50 border border-green-200">
+                <p className="text-xs text-green-600 font-medium mb-1">Number of Paid Teachers</p>
+                <p className="text-2xl font-bold text-green-700">{liveTotals.paid.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'unpaid' && (
+            <>
+              <div className="card p-4 bg-red-50 border border-red-200">
+                <p className="text-xs text-red-600 font-medium mb-1">Unpaid Amount</p>
+                <p className="text-2xl font-bold text-red-700">
+                  ${liveTotals.unpaid.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-red-50 border border-red-200">
+                <p className="text-xs text-red-600 font-medium mb-1">Number of Unpaid Teachers</p>
+                <p className="text-2xl font-bold text-red-700">{liveTotals.unpaid.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'partial' && (
+            <>
+              <div className="card p-4 bg-orange-50 border border-orange-200">
+                <p className="text-xs text-orange-600 font-medium mb-1">Partial Paid Amount</p>
+                <p className="text-2xl font-bold text-orange-700">
+                  ${liveTotals.partial.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-orange-50 border border-orange-200">
+                <p className="text-xs text-orange-600 font-medium mb-1">Partial Outstanding</p>
+                <p className="text-2xl font-bold text-orange-700">
+                  ${liveTotals.partial.outstanding.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-orange-50 border border-orange-200">
+                <p className="text-xs text-orange-600 font-medium mb-1">Number of Partial Teachers</p>
+                <p className="text-2xl font-bold text-orange-700">{liveTotals.partial.count}</p>
+              </div>
+            </>
+          )}
+          {statusFilter === 'advance_applied' && (
+            <>
+              <div className="card p-4 bg-purple-50 border border-purple-200">
+                <p className="text-xs text-purple-600 font-medium mb-1">Advance Applied Amount</p>
+                <p className="text-2xl font-bold text-purple-700">
+                  ${liveTotals.advance_applied.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="card p-4 bg-purple-50 border border-purple-200">
+                <p className="text-xs text-purple-600 font-medium mb-1">Number of Advance Applied</p>
+                <p className="text-2xl font-bold text-purple-700">{liveTotals.advance_applied.count}</p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Desktop Table View */}
       {selectedMonthId && (
@@ -247,37 +405,15 @@ export default function PayTeacherSalary() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <div className="flex justify-end gap-2">
-                          {record.status === 'paid' ? (
-                            <button
-                              onClick={() => handlePayClick(record)}
-                              className="btn btn-outline text-sm"
-                              title="Give Advance Payment"
-                            >
-                              Advance
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => handleQuickPay(record)}
-                                className="btn btn-primary text-sm"
-                                disabled={loading}
-                                title={record.status === 'partial' ? 'Complete remaining balance' : 'Mark as fully paid'}
-                              >
-                                Paid
-                              </button>
-                              {record.outstanding_after_payment > 0 && (
-                                <button
-                                  onClick={() => handlePayClick(record)}
-                                  className="btn btn-outline text-sm"
-                                  title="Custom Payment"
-                                >
-                                  Custom
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
+                        <button
+                          onClick={() => handlePayClick(record)}
+                          className="btn btn-primary text-sm"
+                          disabled={loading}
+                          title={record.status === 'paid' ? 'Give Advance Payment' : 'Pay Salary'}
+                        >
+                          <CurrencyDollarIcon className="h-4 w-4 mr-1 inline" />
+                          Pay
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -337,39 +473,15 @@ export default function PayTeacherSalary() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  {record.status === 'paid' ? (
-                    <button
-                      onClick={() => handlePayClick(record)}
-                      className="btn btn-outline w-full text-sm"
-                      title="Give Advance Payment"
-                    >
-                      <CurrencyDollarIcon className="h-4 w-4 mr-2" />
-                      Advance
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => handleQuickPay(record)}
-                        className="btn btn-primary flex-1 text-sm"
-                        disabled={loading}
-                        title={record.status === 'partial' ? 'Complete remaining balance' : 'Mark as fully paid'}
-                      >
-                        <CurrencyDollarIcon className="h-4 w-4 mr-2" />
-                        Paid
-                      </button>
-                      {record.outstanding_after_payment > 0 && (
-                        <button
-                          onClick={() => handlePayClick(record)}
-                          className="btn btn-outline flex-1 text-sm"
-                          title="Custom Payment"
-                        >
-                          Custom
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
+                <button
+                  onClick={() => handlePayClick(record)}
+                  className="btn btn-primary w-full text-sm"
+                  disabled={loading}
+                  title={record.status === 'paid' ? 'Give Advance Payment' : 'Pay Salary'}
+                >
+                  <CurrencyDollarIcon className="h-4 w-4 mr-2" />
+                  Pay
+                </button>
               </div>
             ))
           )}
@@ -390,7 +502,9 @@ export default function PayTeacherSalary() {
             </div>
             <div className="mb-4 p-3 bg-gray-50 rounded-lg">
               <p className="text-xs sm:text-sm text-gray-600">Teacher: <span className="font-semibold">{selectedTeacher.teacher_name}</span></p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Monthly Salary: <span className="font-semibold">${parseFloat(selectedTeacher.monthly_salary || 0).toLocaleString()}</span></p>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">Outstanding: <span className="font-semibold text-red-600">${parseFloat(selectedTeacher.outstanding_after_payment || 0).toLocaleString()}</span></p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Status: <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(selectedTeacher.status)}`}>{selectedTeacher.status}</span></p>
             </div>
             <form onSubmit={handlePaymentSubmit} className="space-y-3 sm:space-y-4">
               <div>
@@ -398,12 +512,23 @@ export default function PayTeacherSalary() {
                 <select
                   className="input text-sm sm:text-base"
                   value={paymentData.payment_type}
-                  onChange={(e) => setPaymentData({ ...paymentData, payment_type: e.target.value })}
+                  onChange={(e) => {
+                    const newType = e.target.value
+                    setPaymentData({ 
+                      ...paymentData, 
+                      payment_type: newType,
+                      // Auto-set amount based on payment type
+                      amount: newType === 'advance' ? '' : (newType === 'partial' ? (selectedTeacher.outstanding_after_payment || '') : (selectedTeacher.total_due_this_month || ''))
+                    })
+                  }}
                 >
                   <option value="normal">Full Payment</option>
                   <option value="partial">Partial Payment</option>
                   <option value="advance">Advance Payment</option>
                 </select>
+                {selectedTeacher.status === 'paid' && paymentData.payment_type !== 'advance' && (
+                  <p className="text-xs text-orange-600 mt-1">Note: Salary is already paid. Please select "Advance Payment" to give advance.</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Amount</label>
