@@ -24,6 +24,7 @@ export default function Parents() {
   const [months, setMonths] = useState([])
   const [selectedMonthId, setSelectedMonthId] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingParent, setEditingParent] = useState(null)
   const [formData, setFormData] = useState({
@@ -52,7 +53,7 @@ export default function Parents() {
 
   useEffect(() => {
     fetchParents()
-  }, [debouncedSearch, selectedMonthId, statusFilter])
+  }, [debouncedSearch, selectedMonthId, statusFilter, branchFilter])
 
   const fetchMonths = async () => {
     try {
@@ -78,6 +79,9 @@ export default function Parents() {
       if (statusFilter && statusFilter !== 'all') {
         params.status = statusFilter
       }
+      if (branchFilter && branchFilter !== 'all') {
+        params.branch = branchFilter
+      }
       const response = await api.get('/parents', { params })
       setParents(response.data.parents)
     } catch (error) {
@@ -85,7 +89,7 @@ export default function Parents() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, selectedMonthId, statusFilter])
+  }, [debouncedSearch, selectedMonthId, statusFilter, branchFilter])
 
   // Listen for real-time updates
   useEffect(() => {
@@ -188,6 +192,9 @@ export default function Parents() {
       }
       if (statusFilter && statusFilter !== 'all') {
         params.status = statusFilter
+      }
+      if (branchFilter && branchFilter !== 'all') {
+        params.branch = branchFilter
       }
       if (debouncedSearch) {
         params.search = debouncedSearch
@@ -375,6 +382,20 @@ export default function Parents() {
               <option value="partial">Partial</option>
               <option value="outstanding">Outstanding</option>
               <option value="advanced">Advance</option>
+            </select>
+          </div>
+
+          {/* Branch Filter */}
+          <div className="relative">
+            <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400 pointer-events-none" />
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="input pl-9 sm:pl-10 text-sm sm:text-base w-full appearance-none"
+            >
+              <option value="all">All Branches</option>
+              <option value="Branch 1">Branch 1</option>
+              <option value="Branch 2">Branch 2</option>
             </select>
           </div>
         </div>

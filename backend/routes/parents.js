@@ -10,7 +10,7 @@ const upload = multer({ dest: 'uploads/' });
 // Get all parents
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { search, page = 1, limit = 50, month_id, status } = req.query;
+    const { search, page = 1, limit = 50, month_id, status, branch } = req.query;
     const offset = (page - 1) * limit;
 
     // Build query based on filters
@@ -52,6 +52,24 @@ router.get('/', authenticateToken, async (req, res) => {
           paramIndex++;
         }
       }
+
+      // Add branch filter if provided (only if branch column exists)
+      if (branch && branch !== 'all') {
+        try {
+          const columnCheck = await pool.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'parents' AND column_name = 'branch'
+          `);
+          if (columnCheck.rows.length > 0) {
+            query += ` AND p.branch = $${paramIndex}`;
+            params.push(branch);
+            paramIndex++;
+          }
+        } catch (err) {
+          console.warn('Branch column check failed, skipping branch filter:', err.message);
+        }
+      }
     } else {
       // Original query without month filter
       query = `
@@ -76,6 +94,24 @@ router.get('/', authenticateToken, async (req, res) => {
         conditions.push(`pmf.status = $${paramIndex}`);
         params.push(status);
         paramIndex++;
+      }
+
+      // Add branch filter if provided (only if branch column exists)
+      if (branch && branch !== 'all') {
+        try {
+          const columnCheck = await pool.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'parents' AND column_name = 'branch'
+          `);
+          if (columnCheck.rows.length > 0) {
+            conditions.push(`p.branch = $${paramIndex}`);
+            params.push(branch);
+            paramIndex++;
+          }
+        } catch (err) {
+          console.warn('Branch column check failed, skipping branch filter:', err.message);
+        }
       }
 
       if (conditions.length > 0) {
@@ -128,7 +164,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // Export all parents to Excel
 router.get('/export', authenticateToken, async (req, res) => {
   try {
-    const { month_id, status, search } = req.query;
+    const { month_id, status, search, branch } = req.query;
 
     // Build query to get filtered parents
     let parentsQuery;
@@ -169,6 +205,24 @@ router.get('/export', authenticateToken, async (req, res) => {
           paramIndex++;
         }
       }
+
+      // Add branch filter if provided (only if branch column exists)
+      if (branch && branch !== 'all') {
+        try {
+          const columnCheck = await pool.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'parents' AND column_name = 'branch'
+          `);
+          if (columnCheck.rows.length > 0) {
+            parentsQuery += ` AND p.branch = $${paramIndex}`;
+            params.push(branch);
+            paramIndex++;
+          }
+        } catch (err) {
+          console.warn('Branch column check failed, skipping branch filter:', err.message);
+        }
+      }
     } else {
       // Original query without month filter
       parentsQuery = `
@@ -193,6 +247,24 @@ router.get('/export', authenticateToken, async (req, res) => {
         conditions.push(`pmf.status = $${paramIndex}`);
         params.push(status);
         paramIndex++;
+      }
+
+      // Add branch filter if provided (only if branch column exists)
+      if (branch && branch !== 'all') {
+        try {
+          const columnCheck = await pool.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'parents' AND column_name = 'branch'
+          `);
+          if (columnCheck.rows.length > 0) {
+            conditions.push(`p.branch = $${paramIndex}`);
+            params.push(branch);
+            paramIndex++;
+          }
+        } catch (err) {
+          console.warn('Branch column check failed, skipping branch filter:', err.message);
+        }
       }
 
       if (conditions.length > 0) {
@@ -266,6 +338,7 @@ router.get('/export', authenticateToken, async (req, res) => {
       'Phone Number': parent.phone_number || '',
       'Number of Children': parent.number_of_children || 0,
       'Monthly Fee': parseFloat(parent.monthly_fee_amount || 0),
+      'Branch': parent.branch || 'Branch 1',
       'Total Outstanding': parseFloat(outstandingMap[parent.id] || 0),
       'Status': statusMap[parent.id] || 'N/A',
       'Date Added': parent.created_at ? new Date(parent.created_at).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : ''
@@ -280,6 +353,7 @@ router.get('/export', authenticateToken, async (req, res) => {
       'Phone Number': '',
       'Number of Children': allParents.length,
       'Monthly Fee': totalMonthlyFee,
+      'Branch': '',
       'Total Outstanding': totalOutstanding,
       'Status': '',
       'Date Added': ''
@@ -298,6 +372,7 @@ router.get('/export', authenticateToken, async (req, res) => {
       { wch: 18 },  // Phone Number
       { wch: 18 },  // Number of Children
       { wch: 15 },  // Monthly Fee
+      { wch: 15 },  // Branch
       { wch: 18 },  // Total Outstanding
       { wch: 15 },  // Status
       { wch: 15 }   // Date Added
@@ -319,10 +394,12 @@ router.get('/export', authenticateToken, async (req, res) => {
 
     // Step 7: Set headers and send with proper encoding
     let filename = `Parents_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
-    if (month_id || (status && status !== 'all')) {
+    if (month_id || (status && status !== 'all') || (branch && branch !== 'all')) {
       const statusName = status && status !== 'all' ? status.charAt(0).toUpperCase() + status.slice(1) : '';
+      const branchName = branch && branch !== 'all' ? branch.replace(' ', '_') : '';
       const monthInfo = month_id ? `Month_${month_id}_` : '';
-      filename = `Parents_${statusName ? statusName + '_' : ''}${monthInfo}Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const parts = [statusName, branchName, monthInfo].filter(Boolean);
+      filename = `Parents_${parts.join('_')}_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
     }
     
     // Set proper headers for Excel file download
@@ -350,19 +427,21 @@ router.get('/export', authenticateToken, async (req, res) => {
 // Download import template
 router.get('/import/template', authenticateToken, (req, res) => {
   try {
-    // Create template data
+    // Create template data with Branch column
     const templateData = [
       {
         'Parent Name': 'John Doe',
         'Phone Number': '1234567890',
         'Number of Children': 2,
-        'Monthly Fee': 100.00
+        'Monthly Fee': 100.00,
+        'Branch': 'Branch 1'
       },
       {
         'Parent Name': 'Jane Smith',
         'Phone Number': '0987654321',
         'Number of Children': 1,
-        'Monthly Fee': 80.00
+        'Monthly Fee': 80.00,
+        'Branch': 'Branch 2'
       }
     ];
 
@@ -375,7 +454,8 @@ router.get('/import/template', authenticateToken, (req, res) => {
       { wch: 20 }, // Parent Name
       { wch: 15 }, // Phone Number
       { wch: 18 }, // Number of Children
-      { wch: 15 }  // Monthly Fee
+      { wch: 15 }, // Monthly Fee
+      { wch: 15 }  // Branch
     ];
 
     xlsx.utils.book_append_sheet(workbook, worksheet, 'Parents');
@@ -428,10 +508,22 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
         const phone_number = String(row['Phone Number'] || row['phone_number'] || row['Phone'] || '').trim();
         const number_of_children = parseInt(row['Number of Children'] || row['number_of_children'] || row['Children'] || 1);
         const monthly_fee_amount = parseFloat(row['Monthly Fee'] || row['monthly_fee_amount'] || row['Fee'] || 0);
-        const branch = row['Branch'] || 'Branch 1';
+        const branch = String(row['Branch'] || row['branch'] || '').trim();
 
+        // Validate required fields
         if (!parent_name || !phone_number || !monthly_fee_amount) {
-          errors.push({ row, error: 'Missing required fields' });
+          errors.push({ row, error: 'Missing required fields (Parent Name, Phone Number, or Monthly Fee)' });
+          continue;
+        }
+
+        // Validate Branch field (required, must be Branch 1 or Branch 2)
+        if (!branch) {
+          errors.push({ row, error: 'Branch is required. Must be "Branch 1" or "Branch 2"' });
+          continue;
+        }
+
+        if (branch !== 'Branch 1' && branch !== 'Branch 2') {
+          errors.push({ row, error: `Invalid Branch value: "${branch}". Must be "Branch 1" or "Branch 2"` });
           continue;
         }
 
