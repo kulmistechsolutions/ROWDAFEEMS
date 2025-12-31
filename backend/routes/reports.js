@@ -600,11 +600,22 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
       paramIndex = 1;
     }
 
-    // Add branch filter if provided
+    // Add branch filter if provided (only if branch column exists)
     let branchFilter = '';
     if (branch && branch !== 'all') {
-      branchFilter = ` AND p.branch = $${paramIndex}`;
-      params.push(branch);
+      try {
+        const columnCheck = await pool.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'parents' AND column_name = 'branch'
+        `);
+        if (columnCheck.rows.length > 0) {
+          branchFilter = ` AND p.branch = $${paramIndex}`;
+          params.push(branch);
+        }
+      } catch (err) {
+        console.warn('Branch column check failed, skipping branch filter:', err.message);
+      }
     }
 
     // 1. Parent Fee Records - Handle empty results gracefully
