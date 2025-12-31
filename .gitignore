@@ -7,6 +7,9 @@ yarn.lock
 .env
 .env.local
 .env.production
+.env.backup
+.env.local.backup
+*.env.backup
 .env.development
 .env.*.local
 
