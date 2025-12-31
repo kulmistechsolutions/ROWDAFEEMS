@@ -448,9 +448,22 @@ router.get('/:monthId/fees', authenticateToken, async (req, res) => {
       }
     }
 
+    // Add branch filter if provided (only if branch column exists)
     if (branch && branch !== 'all') {
-      query += ` AND p.branch = $${params.length + 1}`;
-      params.push(branch);
+      try {
+        const columnCheck = await pool.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'parents' AND column_name = 'branch'
+        `);
+        if (columnCheck.rows.length > 0) {
+          query += ` AND p.branch = $${params.length + 1}`;
+          params.push(branch);
+        }
+      } catch (err) {
+        // If check fails, skip branch filtering
+        console.warn('Branch column check failed, skipping branch filter:', err.message);
+      }
     }
 
     if (search) {

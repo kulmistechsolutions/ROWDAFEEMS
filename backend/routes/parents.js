@@ -513,17 +513,47 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch } = req.body;
 
-    const result = await pool.query(
-      `UPDATE parents 
+    // Check if branch column exists
+    let hasBranchColumn = false;
+    try {
+      const columnCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'parents' AND column_name = 'branch'
+      `);
+      hasBranchColumn = columnCheck.rows.length > 0;
+    } catch (err) {
+      // If check fails, assume column doesn't exist
+      hasBranchColumn = false;
+    }
+
+    // Build UPDATE query based on whether branch column exists
+    let updateQuery;
+    let params;
+    
+    if (hasBranchColumn) {
+      updateQuery = `UPDATE parents 
        SET parent_name = COALESCE($1, parent_name),
            phone_number = COALESCE($2, phone_number),
            number_of_children = COALESCE($3, number_of_children),
            monthly_fee_amount = COALESCE($4, monthly_fee_amount),
            student_status = COALESCE($5, student_status),
            branch = COALESCE($6, branch)
-       WHERE id = $7 RETURNING *`,
-      [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch, id]
-    );
+       WHERE id = $7 RETURNING *`;
+      params = [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch, id];
+    } else {
+      // Branch column doesn't exist - update without it
+      updateQuery = `UPDATE parents 
+       SET parent_name = COALESCE($1, parent_name),
+           phone_number = COALESCE($2, phone_number),
+           number_of_children = COALESCE($3, number_of_children),
+           monthly_fee_amount = COALESCE($4, monthly_fee_amount),
+           student_status = COALESCE($5, student_status)
+       WHERE id = $6 RETURNING *`;
+      params = [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, id];
+    }
+
+    const result = await pool.query(updateQuery, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Parent not found' });
@@ -539,6 +569,20 @@ router.put('/:id', authenticateToken, async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Update parent error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail
+    });
+    
+    // If error is about missing column, provide helpful message
+    if (error.message && error.message.includes('column') && error.message.includes('does not exist')) {
+      return res.status(500).json({ 
+        error: 'Database schema mismatch. Please run migration: node scripts/run-migration-branch.js',
+        details: error.message
+      });
+    }
+    
     res.status(500).json({ error: 'Failed to update parent' });
   }
 });

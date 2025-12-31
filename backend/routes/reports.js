@@ -25,12 +25,25 @@ router.get('/summary', authenticateToken, async (req, res) => {
       paramIndex = 1;
     }
 
-    // Add branch filter if provided
+    // Add branch filter if provided (only if branch column exists)
     let branchFilter = '';
     if (branch && branch !== 'all') {
-      branchFilter = monthQuery ? 'AND' : 'WHERE';
-      branchFilter += ` p.branch = $${paramIndex}`;
-      params.push(branch);
+      // Check if branch column exists before filtering
+      try {
+        const columnCheck = await pool.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'parents' AND column_name = 'branch'
+        `);
+        if (columnCheck.rows.length > 0) {
+          branchFilter = monthQuery ? 'AND' : 'WHERE';
+          branchFilter += ` p.branch = $${paramIndex}`;
+          params.push(branch);
+        }
+      } catch (err) {
+        // If check fails, skip branch filtering
+        console.warn('Branch column check failed, skipping branch filter:', err.message);
+      }
     }
 
     // Get summary statistics
@@ -815,11 +828,22 @@ router.get('/export-pdf', authenticateToken, async (req, res) => {
       paramIndex = 1;
     }
 
-    // Add branch filter if provided
+    // Add branch filter if provided (only if branch column exists)
     let branchFilter = '';
     if (branch && branch !== 'all') {
-      branchFilter = ` AND p.branch = $${paramIndex}`;
-      params.push(branch);
+      try {
+        const columnCheck = await pool.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'parents' AND column_name = 'branch'
+        `);
+        if (columnCheck.rows.length > 0) {
+          branchFilter = ` AND p.branch = $${paramIndex}`;
+          params.push(branch);
+        }
+      } catch (err) {
+        console.warn('Branch column check failed, skipping branch filter:', err.message);
+      }
     }
 
     // Get all summary data
