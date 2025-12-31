@@ -484,11 +484,33 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Parent name, phone number, and monthly fee are required' });
     }
 
-    const result = await pool.query(
-      `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount, branch)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [parent_name, phone_number, number_of_children || 1, monthly_fee_amount, branch || 'Branch 1']
-    );
+    // Check if branch column exists
+    let hasBranchColumn = false;
+    try {
+      const columnCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'parents' AND column_name = 'branch'
+      `);
+      hasBranchColumn = columnCheck.rows.length > 0;
+    } catch (err) {
+      hasBranchColumn = false;
+    }
+
+    let result;
+    if (hasBranchColumn) {
+      result = await pool.query(
+        `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount, branch)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [parent_name, phone_number, number_of_children || 1, monthly_fee_amount, branch || 'Branch 1']
+      );
+    } else {
+      result = await pool.query(
+        `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [parent_name, phone_number, number_of_children || 1, monthly_fee_amount]
+      );
+    }
 
     // Emit real-time update via Socket.io
     const io = req.app.get('io');
