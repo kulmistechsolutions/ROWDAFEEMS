@@ -28,6 +28,9 @@ router.get('/summary', authenticateToken, async (req, res) => {
     // Add branch filter if provided (only if branch column exists)
     let branchFilter = '';
     let branchColumnExists = false;
+    // Keep track of params for queries that don't use branch filter
+    const monthParams = [...params];
+    
     if (branch && branch !== 'all') {
       // Check if branch column exists before filtering
       try {
@@ -42,7 +45,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
           branchColumnExists = true;
           branchFilter = monthQuery ? ' AND' : ' WHERE';
           branchFilter += ` p.branch = $${paramIndex}`;
-          params.push(branch);
+          params.push(branch); // Only add to params (used for queries with branch filter)
         } else {
           // Column doesn't exist, skip branch filtering
           console.warn('Branch column does not exist, skipping branch filter');
@@ -151,7 +154,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
       }
     }
 
-    // Get teacher salary summary
+    // Get teacher salary summary (doesn't use branch filter, use monthParams only)
     const teacherSalarySummary = await pool.query(`
       SELECT 
         COALESCE(SUM(tsr.total_due_this_month), 0) as total_salary_required,
@@ -160,17 +163,17 @@ router.get('/summary', authenticateToken, async (req, res) => {
       FROM teacher_salary_records tsr
       JOIN billing_months bm ON tsr.billing_month_id = bm.id
       ${monthQuery}`,
-      params
+      monthParams
     );
 
-    // Get expenses summary
+    // Get expenses summary (doesn't use branch filter, use monthParams only)
     const expensesSummary = await pool.query(`
       SELECT 
         COALESCE(SUM(e.amount), 0) as total_expenses
       FROM expenses e
       LEFT JOIN billing_months bm ON e.billing_month_id = bm.id
       ${monthQuery}`,
-      params
+      monthParams
     );
 
     const parentSummary = summaryResult.rows[0];
