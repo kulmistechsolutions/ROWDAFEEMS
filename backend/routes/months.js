@@ -428,13 +428,15 @@ router.get('/:monthId/fees', authenticateToken, async (req, res) => {
         p.parent_name,
         p.phone_number,
         p.number_of_children,
-        p.monthly_fee_amount as parent_monthly_fee
+        p.monthly_fee_amount as parent_monthly_fee,
+        p.branch
       FROM parent_month_fee pmf
       JOIN parents p ON pmf.parent_id = p.id
       WHERE pmf.billing_month_id = $1
     `;
 
     const params = [monthId];
+    const { branch } = req.query;
 
     if (status && status !== 'all') {
       if (status === 'outstanding') {
@@ -444,6 +446,11 @@ router.get('/:monthId/fees', authenticateToken, async (req, res) => {
         query += ` AND pmf.status = $${params.length + 1}`;
         params.push(status);
       }
+    }
+
+    if (branch && branch !== 'all') {
+      query += ` AND p.branch = $${params.length + 1}`;
+      params.push(branch);
     }
 
     if (search) {

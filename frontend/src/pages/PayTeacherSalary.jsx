@@ -87,6 +87,33 @@ export default function PayTeacherSalary() {
     setShowPaymentModal(true)
   }
 
+  const handleQuickPay = async (teacher) => {
+    if (!window.confirm(`Mark ${teacher.teacher_name}'s salary as fully paid for this month?`)) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      const response = await api.post('/teachers/salary/quick-pay', {
+        teacher_id: teacher.teacher_id,
+        billing_month_id: selectedMonthId,
+        notes: 'Quick Pay - Marked as Paid'
+      })
+      toast.success(response.data.message || 'Salary marked as fully paid')
+      fetchSalaryRecords()
+    } catch (error) {
+      if (error.response?.data?.already_paid) {
+        // If already paid, open advance payment modal
+        handlePayClick(teacher)
+        setPaymentData(prev => ({ ...prev, payment_type: 'advance' }))
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to process payment')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePaymentSubmit = async (e) => {
     e.preventDefault()
     try {
@@ -220,14 +247,37 @@ export default function PayTeacherSalary() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        {record.outstanding_after_payment > 0 && (
-                          <button
-                            onClick={() => handlePayClick(record)}
-                            className="btn btn-primary text-sm"
-                          >
-                            Pay
-                          </button>
-                        )}
+                        <div className="flex justify-end gap-2">
+                          {record.status === 'paid' ? (
+                            <button
+                              onClick={() => handlePayClick(record)}
+                              className="btn btn-outline text-sm"
+                              title="Give Advance Payment"
+                            >
+                              Advance
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleQuickPay(record)}
+                                className="btn btn-primary text-sm"
+                                disabled={loading}
+                                title={record.status === 'partial' ? 'Complete remaining balance' : 'Mark as fully paid'}
+                              >
+                                Paid
+                              </button>
+                              {record.outstanding_after_payment > 0 && (
+                                <button
+                                  onClick={() => handlePayClick(record)}
+                                  className="btn btn-outline text-sm"
+                                  title="Custom Payment"
+                                >
+                                  Custom
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -287,15 +337,39 @@ export default function PayTeacherSalary() {
                   </div>
                 </div>
 
-                {record.outstanding_after_payment > 0 && (
-                  <button
-                    onClick={() => handlePayClick(record)}
-                    className="btn btn-primary w-full text-sm"
-                  >
-                    <CurrencyDollarIcon className="h-4 w-4 mr-2" />
-                    Pay Salary
-                  </button>
-                )}
+                <div className="flex gap-2">
+                  {record.status === 'paid' ? (
+                    <button
+                      onClick={() => handlePayClick(record)}
+                      className="btn btn-outline w-full text-sm"
+                      title="Give Advance Payment"
+                    >
+                      <CurrencyDollarIcon className="h-4 w-4 mr-2" />
+                      Advance
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleQuickPay(record)}
+                        className="btn btn-primary flex-1 text-sm"
+                        disabled={loading}
+                        title={record.status === 'partial' ? 'Complete remaining balance' : 'Mark as fully paid'}
+                      >
+                        <CurrencyDollarIcon className="h-4 w-4 mr-2" />
+                        Paid
+                      </button>
+                      {record.outstanding_after_payment > 0 && (
+                        <button
+                          onClick={() => handlePayClick(record)}
+                          className="btn btn-outline flex-1 text-sm"
+                          title="Custom Payment"
+                        >
+                          Custom
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             ))
           )}

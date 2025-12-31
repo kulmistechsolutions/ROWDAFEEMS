@@ -7,12 +7,13 @@ import { ArrowDownTrayIcon, DocumentArrowDownIcon, UsersIcon, AcademicCapIcon, R
 export default function Reports() {
   const [summary, setSummary] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const { socket } = useSocket()
 
   useEffect(() => {
     fetchSummary()
-  }, [selectedMonth])
+  }, [selectedMonth, branchFilter])
 
   // Listen for real-time report updates
   useEffect(() => {
@@ -32,7 +33,9 @@ export default function Reports() {
   const fetchSummary = async () => {
     try {
       setLoading(true)
-      const params = selectedMonth ? { month: selectedMonth } : {}
+      const params = {}
+      if (selectedMonth) params.month = selectedMonth
+      if (branchFilter !== 'all') params.branch = branchFilter
       const response = await api.get('/reports/summary', { params })
       setSummary(response.data.summary)
     } catch (error) {
@@ -44,7 +47,9 @@ export default function Reports() {
 
   const handleExport = async (type = 'all', format = 'excel') => {
     try {
-      const params = selectedMonth ? { month: selectedMonth } : {}
+      const params = {}
+      if (selectedMonth) params.month = selectedMonth
+      if (branchFilter !== 'all') params.branch = branchFilter
       const endpoint = type === 'all' 
         ? `/reports/export-${format}` 
         : `/reports/export-${type}-${format}`
@@ -92,6 +97,15 @@ export default function Reports() {
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="input w-full sm:w-48 text-sm sm:text-base"
           />
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="input w-full sm:w-48 text-sm sm:text-base"
+          >
+            <option value="all">All Branches</option>
+            <option value="Branch 1">Branch 1</option>
+            <option value="Branch 2">Branch 2</option>
+          </select>
         </div>
 
         {/* All Reports Export - Prominent Section */}

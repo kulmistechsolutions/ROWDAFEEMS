@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS parents (
     monthly_fee_amount DECIMAL(10, 2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    branch VARCHAR(50) DEFAULT 'Branch 1' CHECK (branch IN ('Branch 1', 'Branch 2')),
     UNIQUE(phone_number)
 );
 

@@ -18,6 +18,7 @@ export default function CollectFee() {
   const [parentFee, setParentFee] = useState(null)
   const [allFees, setAllFees] = useState([])
   const [statusFilter, setStatusFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [paymentData, setPaymentData] = useState({
     amount: '',
     payment_type: 'normal',
@@ -53,11 +54,6 @@ export default function CollectFee() {
     }
   }, [])
 
-  useEffect(() => {
-    if (selectedMonthId) {
-      fetchAllFees()
-    }
-  }, [selectedMonthId])
 
   // Listen for real-time payment updates and month creation
   useEffect(() => {
@@ -143,7 +139,15 @@ export default function CollectFee() {
     
     try {
       setLoadingFees(true)
-      const response = await api.get(`/months/${selectedMonthId}/fees`)
+      const params = new URLSearchParams()
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter)
+      }
+      if (branchFilter !== 'all') {
+        params.append('branch', branchFilter)
+      }
+      const url = `/months/${selectedMonthId}/fees${params.toString() ? '?' + params.toString() : ''}`
+      const response = await api.get(url)
       setAllFees(response.data)
     } catch (error) {
       toast.error('Failed to fetch fees')
@@ -152,7 +156,14 @@ export default function CollectFee() {
     }
   }
 
-  // Memoize filtered fees for better performance
+  useEffect(() => {
+    if (selectedMonthId) {
+      fetchAllFees()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonthId, statusFilter, branchFilter])
+
+  // Memoize filtered fees for better performance (backend handles status and branch, frontend only handles search)
   const filteredFees = useMemo(() => {
     let filtered = [...allFees]
 
@@ -165,21 +176,12 @@ export default function CollectFee() {
       )
     }
 
-    // Filter by status
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'outstanding') {
-        filtered = filtered.filter(fee => parseFloat(fee.outstanding_after_payment || 0) > 0)
-      } else {
-        filtered = filtered.filter(fee => fee.status === statusFilter)
-      }
-    }
-
     return filtered
-  }, [allFees, searchQuery, statusFilter])
+  }, [allFees, searchQuery])
 
-  // Calculate live totals based on filtered fees
+  // Calculate live totals based on filtered fees (works with any filter combination)
   const liveTotals = useMemo(() => {
-    if (statusFilter === 'all' || !filteredFees.length) {
+    if (!filteredFees.length) {
       return null
     }
 
@@ -212,27 +214,36 @@ export default function CollectFee() {
       const paid = parseFloat(fee.amount_paid_this_month || 0)
       const totalDue = parseFloat(fee.total_due_this_month || 0)
 
-      if (statusFilter === 'paid' || fee.status === 'paid') {
+      // Calculate totals based on actual status (works with any filter combination)
+      const outstanding = parseFloat(fee.outstanding_after_payment || 0)
+      const paid = parseFloat(fee.amount_paid_this_month || 0)
+      const totalDue = parseFloat(fee.total_due_this_month || 0)
+
+      if (fee.status === 'paid') {
         totals.paid.amount += paid
         totals.paid.count++
-      } else if (statusFilter === 'unpaid' || fee.status === 'unpaid') {
+      }
+      if (fee.status === 'unpaid') {
         totals.unpaid.amount += outstanding
         totals.unpaid.count++
-      } else if (statusFilter === 'partial' || fee.status === 'partial') {
+      }
+      if (fee.status === 'partial') {
         totals.partial.paidAmount += paid
         totals.partial.remainingBalance += outstanding
         totals.partial.count++
-      } else if (statusFilter === 'outstanding' || outstanding > 0) {
+      }
+      if (outstanding > 0) {
         totals.outstanding.amount += outstanding
         totals.outstanding.count++
-      } else if (statusFilter === 'advanced' || fee.status === 'advanced') {
+      }
+      if (fee.status === 'advanced') {
         totals.advanced.amount += paid
         totals.advanced.count++
       }
     })
 
     return totals
-  }, [filteredFees, statusFilter])
+  }, [filteredFees])
 
   const handleSelectParent = (fee) => {
     setSelectedParent({
@@ -418,9 +429,27 @@ export default function CollectFee() {
       )}
 
       {/* Live Totals Summary */}
-      {selectedMonthId && statusFilter !== 'all' && liveTotals && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {statusFilter === 'paid' && (
+      {selectedMonthId && (statusFilter !== 'all' || branchFilter !== 'all') && liveTotals && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+          {/* General totals - always show */}
+          <div className="card p-4 bg-blue-50 border border-blue-200">
+            <p className="text-xs text-blue-600 font-medium mb-1">Total Amount Collected</p>
+            <p className="text-2xl font-bold text-blue-700">
+              ${filteredFees.reduce((sum, fee) => sum + parseFloat(fee.amount_paid_this_month || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="card p-4 bg-red-50 border border-red-200">
+            <p className="text-xs text-red-600 font-medium mb-1">Total Outstanding Amount</p>
+            <p className="text-2xl font-bold text-red-700">
+              ${filteredFees.reduce((sum, fee) => sum + parseFloat(fee.outstanding_after_payment || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="card p-4 bg-gray-50 border border-gray-200">
+            <p className="text-xs text-gray-600 font-medium mb-1">Number of Students</p>
+            <p className="text-2xl font-bold text-gray-700">{filteredFees.length}</p>
+          </div>
+          {/* Status-specific totals - show when status filter is selected */}
+          {statusFilter === 'paid' && liveTotals.paid.count > 0 && (
             <>
               <div className="card p-4 bg-green-50 border border-green-200">
                 <p className="text-xs text-green-600 font-medium mb-1">Total Paid Amount</p>

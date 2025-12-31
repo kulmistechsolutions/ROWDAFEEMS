@@ -415,6 +415,7 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
         const phone_number = String(row['Phone Number'] || row['phone_number'] || row['Phone'] || '').trim();
         const number_of_children = parseInt(row['Number of Children'] || row['number_of_children'] || row['Children'] || 1);
         const monthly_fee_amount = parseFloat(row['Monthly Fee'] || row['monthly_fee_amount'] || row['Fee'] || 0);
+        const branch = row['Branch'] || 'Branch 1';
 
         if (!parent_name || !phone_number || !monthly_fee_amount) {
           errors.push({ row, error: 'Missing required fields' });
@@ -422,14 +423,15 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
         }
 
         const result = await pool.query(
-          `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
-           VALUES ($1, $2, $3, $4)
+          `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount, branch)
+           VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (phone_number) DO UPDATE
            SET parent_name = EXCLUDED.parent_name,
                number_of_children = EXCLUDED.number_of_children,
-               monthly_fee_amount = EXCLUDED.monthly_fee_amount
+               monthly_fee_amount = EXCLUDED.monthly_fee_amount,
+               branch = COALESCE(EXCLUDED.branch, parents.branch)
            RETURNING *`,
-          [parent_name, phone_number, number_of_children, monthly_fee_amount]
+          [parent_name, phone_number, number_of_children, monthly_fee_amount, branch]
         );
 
         imported.push(result.rows[0]);
@@ -476,16 +478,16 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create parent
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { parent_name, phone_number, number_of_children, monthly_fee_amount } = req.body;
+    const { parent_name, phone_number, number_of_children, monthly_fee_amount, branch } = req.body;
 
     if (!parent_name || !phone_number || !monthly_fee_amount) {
       return res.status(400).json({ error: 'Parent name, phone number, and monthly fee are required' });
     }
 
     const result = await pool.query(
-      `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [parent_name, phone_number, number_of_children || 1, monthly_fee_amount]
+      `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount, branch)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [parent_name, phone_number, number_of_children || 1, monthly_fee_amount, branch || 'Branch 1']
     );
 
     // Emit real-time update via Socket.io
@@ -509,7 +511,7 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { parent_name, phone_number, number_of_children, monthly_fee_amount, student_status } = req.body;
+    const { parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch } = req.body;
 
     const result = await pool.query(
       `UPDATE parents 
@@ -517,9 +519,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
            phone_number = COALESCE($2, phone_number),
            number_of_children = COALESCE($3, number_of_children),
            monthly_fee_amount = COALESCE($4, monthly_fee_amount),
-           student_status = COALESCE($5, student_status)
-       WHERE id = $6 RETURNING *`,
-      [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, id]
+           student_status = COALESCE($5, student_status),
+           branch = COALESCE($6, branch)
+       WHERE id = $7 RETURNING *`,
+      [parent_name, phone_number, number_of_children, monthly_fee_amount, student_status, branch, id]
     );
 
     if (result.rows.length === 0) {

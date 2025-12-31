@@ -31,7 +31,8 @@ export default function Parents() {
     phone_number: '',
     number_of_children: 1,
     monthly_fee_amount: '',
-    student_status: 'active'
+    student_status: 'active',
+    branch: 'Branch 1'
   })
   const navigate = useNavigate()
   const { socket } = useSocket()
@@ -138,7 +139,7 @@ export default function Parents() {
       }
       setShowAddModal(false)
       setEditingParent(null)
-      setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '', student_status: 'active' })
+      setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '', student_status: 'active', branch: 'Branch 1' })
       fetchParents()
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to save parent')
@@ -152,7 +153,8 @@ export default function Parents() {
       phone_number: parent.phone_number,
       number_of_children: parent.number_of_children,
       monthly_fee_amount: parent.monthly_fee_amount,
-      student_status: parent.student_status || 'active'
+      student_status: parent.student_status || 'active',
+      branch: parent.branch || 'Branch 1'
     })
     setShowAddModal(true)
   }
@@ -414,6 +416,9 @@ export default function Parents() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Student Status
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Branch
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
@@ -450,6 +455,9 @@ export default function Parents() {
                       }`}>
                         {(parent.student_status || 'active') === 'active' ? 'Active' : 'Suspended'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {parent.branch || 'Branch 1'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
@@ -532,6 +540,10 @@ export default function Parents() {
                   <p className="font-bold text-red-600 text-base">
                     ${parseFloat(parent.total_outstanding || 0).toLocaleString()}
                   </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Branch</p>
+                  <p className="font-semibold">{parent.branch || 'Branch 1'}</p>
                 </div>
               </div>
 
@@ -625,6 +637,17 @@ export default function Parents() {
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Suspended students will not be included in new month billing</p>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                <select
+                  className="input text-sm sm:text-base"
+                  value={formData.branch}
+                  onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
+                >
+                  <option value="Branch 1">Branch 1</option>
+                  <option value="Branch 2">Branch 2</option>
+                </select>
+              </div>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
                 <button type="submit" className="flex-1 btn btn-primary text-sm sm:text-base">
                   {editingParent ? 'Update' : 'Add'} Parent
@@ -634,7 +657,7 @@ export default function Parents() {
                   onClick={() => {
                     setShowAddModal(false)
                     setEditingParent(null)
-                    setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '', student_status: 'active' })
+                    setFormData({ parent_name: '', phone_number: '', number_of_children: 1, monthly_fee_amount: '', student_status: 'active', branch: 'Branch 1' })
                   }}
                   className="flex-1 btn btn-outline text-sm sm:text-base"
                 >

@@ -9,17 +9,28 @@ const router = express.Router();
 // Get summary report
 router.get('/summary', authenticateToken, async (req, res) => {
   try {
-    const { month } = req.query; // Format: YYYY-MM
+    const { month, branch } = req.query; // Format: YYYY-MM for month
 
     let monthQuery = '';
     const params = [];
+    let paramIndex = 1;
 
     if (month) {
       const [year, monthNum] = month.split('-');
       monthQuery = 'WHERE bm.year = $1 AND bm.month = $2';
       params.push(year, monthNum);
+      paramIndex = 3;
     } else {
       monthQuery = 'WHERE bm.is_active = true';
+      paramIndex = 1;
+    }
+
+    // Add branch filter if provided
+    let branchFilter = '';
+    if (branch && branch !== 'all') {
+      branchFilter = monthQuery ? 'AND' : 'WHERE';
+      branchFilter += ` p.branch = $${paramIndex}`;
+      params.push(branch);
     }
 
     // Get summary statistics
@@ -37,7 +48,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
       FROM parent_month_fee pmf
       JOIN billing_months bm ON pmf.billing_month_id = bm.id
       JOIN parents p ON pmf.parent_id = p.id
-      ${monthQuery}`,
+      ${monthQuery}${branchFilter}`,
       params
     );
 
@@ -61,7 +72,8 @@ router.get('/summary', authenticateToken, async (req, res) => {
         COUNT(*) as count
       FROM parent_month_fee pmf
       JOIN billing_months bm ON pmf.billing_month_id = bm.id
-      ${monthQuery}
+      JOIN parents p ON pmf.parent_id = p.id
+      ${monthQuery}${branchFilter}
       GROUP BY pmf.status`,
       params
     );
@@ -556,10 +568,11 @@ router.get('/export-expenses-pdf', authenticateToken, async (req, res) => {
 // Export to Excel (All Reports - generic route comes after specific ones)
 router.get('/export-excel', authenticateToken, async (req, res) => {
   try {
-    const { month } = req.query; // Format: YYYY-MM
+    const { month, branch } = req.query; // Format: YYYY-MM for month
 
     let monthQuery = '';
     const params = [];
+    let paramIndex = 1;
 
     if (month) {
       const [year, monthNum] = month.split('-');
@@ -568,8 +581,17 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
       }
       monthQuery = 'WHERE bm.year = $1 AND bm.month = $2';
       params.push(parseInt(year), parseInt(monthNum));
+      paramIndex = 3;
     } else {
       monthQuery = 'WHERE bm.is_active = true';
+      paramIndex = 1;
+    }
+
+    // Add branch filter if provided
+    let branchFilter = '';
+    if (branch && branch !== 'all') {
+      branchFilter = ` AND p.branch = $${paramIndex}`;
+      params.push(branch);
     }
 
     // 1. Parent Fee Records - Handle empty results gracefully
@@ -581,6 +603,7 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
           p.phone_number as "Phone",
           p.number_of_children as "Children",
           p.monthly_fee_amount as "Monthly Fee",
+          p.branch as "Branch",
           pmf.amount_paid_this_month as "Paid Amount",
           pmf.outstanding_after_payment as "Outstanding",
           pmf.status as "Status",
@@ -589,7 +612,7 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
         FROM parent_month_fee pmf
         JOIN parents p ON pmf.parent_id = p.id
         JOIN billing_months bm ON pmf.billing_month_id = bm.id
-        ${monthQuery}
+        ${monthQuery}${branchFilter}
         ORDER BY p.parent_name
       `;
       parentResult = await pool.query(parentQuery, params);
@@ -706,11 +729,11 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
         FROM parent_month_fee pmf
         JOIN billing_months bm ON pmf.billing_month_id = bm.id
         JOIN parents p ON pmf.parent_id = p.id
-        LEFT JOIN teacher_salary_records tsr ON tsr.billing_month_id = bm.id
-        LEFT JOIN teachers t ON tsr.teacher_id = t.id
-        ${monthQuery}`,
-        params
-      );
+          LEFT JOIN teacher_salary_records tsr ON tsr.billing_month_id = bm.id
+          LEFT JOIN teachers t ON tsr.teacher_id = t.id
+          ${monthQuery}${branchFilter}`,
+          params
+        );
 
       if (summaryData.rows.length > 0) {
         summaryRow = summaryData.rows[0];
@@ -776,17 +799,27 @@ router.get('/export-excel', authenticateToken, async (req, res) => {
 // Export financial report to PDF
 router.get('/export-pdf', authenticateToken, async (req, res) => {
   try {
-    const { month } = req.query; // Format: YYYY-MM
+    const { month, branch } = req.query; // Format: YYYY-MM for month
 
     let monthQuery = '';
     const params = [];
+    let paramIndex = 1;
 
     if (month) {
       const [year, monthNum] = month.split('-');
       monthQuery = 'WHERE bm.year = $1 AND bm.month = $2';
       params.push(year, monthNum);
+      paramIndex = 3;
     } else {
       monthQuery = 'WHERE bm.is_active = true';
+      paramIndex = 1;
+    }
+
+    // Add branch filter if provided
+    let branchFilter = '';
+    if (branch && branch !== 'all') {
+      branchFilter = ` AND p.branch = $${paramIndex}`;
+      params.push(branch);
     }
 
     // Get all summary data
@@ -803,7 +836,7 @@ router.get('/export-pdf', authenticateToken, async (req, res) => {
       FROM parent_month_fee pmf
       JOIN billing_months bm ON pmf.billing_month_id = bm.id
       JOIN parents p ON pmf.parent_id = p.id
-      ${monthQuery}`,
+      ${monthQuery}${branchFilter}`,
       params
     );
 

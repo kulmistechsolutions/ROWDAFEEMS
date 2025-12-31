@@ -221,6 +221,129 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Quick Pay - Paid button (automatically handles unpaid/partial/paid states)
+router.post('/quick-pay', authenticateToken, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const { teacher_id, billing_month_id, notes } = req.body;
+    const paid_by = req.user.id;
+
+    if (!teacher_id || !billing_month_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Teacher ID and billing month ID are required' });
+    }
+
+    // Get teacher and month info
+    const teacherResult = await client.query('SELECT * FROM teachers WHERE id = $1', [teacher_id]);
+    if (teacherResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+
+    const teacher = teacherResult.rows[0];
+    const monthResult = await client.query('SELECT * FROM billing_months WHERE id = $1', [billing_month_id]);
+    if (monthResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Month not found' });
+    }
+
+    // Get current salary record
+    const salaryResult = await client.query(
+      'SELECT * FROM teacher_salary_records WHERE teacher_id = $1 AND billing_month_id = $2',
+      [teacher_id, billing_month_id]
+    );
+
+    if (salaryResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Salary record not found for this month. Please set up the month first.' });
+    }
+
+    const salaryRecord = salaryResult.rows[0];
+    const outstanding = parseFloat(salaryRecord.outstanding_after_payment || 0);
+    const currentStatus = salaryRecord.status;
+
+    let paymentType = 'normal';
+    let paymentAmount = 0;
+    let newStatus = 'paid';
+    let newPaid = 0;
+    let newOutstanding = 0;
+
+    // Determine payment logic based on current status
+    if (currentStatus === 'paid') {
+      // Already paid - return message to use advance payment
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: 'Salary is already fully paid. Please use Advance Payment to pay for future months.',
+        already_paid: true
+      });
+    } else if (currentStatus === 'partial' || outstanding > 0) {
+      // Partial payment - complete the remaining balance
+      paymentType = 'normal';
+      paymentAmount = outstanding;
+      newPaid = parseFloat(salaryRecord.total_due_this_month);
+      newOutstanding = 0;
+      newStatus = 'paid';
+    } else {
+      // Unpaid - pay full amount
+      paymentType = 'normal';
+      paymentAmount = parseFloat(salaryRecord.total_due_this_month);
+      newPaid = paymentAmount;
+      newOutstanding = 0;
+      newStatus = 'paid';
+    }
+
+    // Create payment record
+    const paymentResult = await client.query(
+      `INSERT INTO teacher_salary_payments (teacher_id, billing_month_id, amount, payment_type, paid_by, notes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [teacher_id, billing_month_id, paymentAmount, paymentType, paid_by, notes || null]
+    );
+
+    const payment = paymentResult.rows[0];
+
+    // Update salary record
+    await client.query(
+      `UPDATE teacher_salary_records 
+       SET amount_paid_this_month = $1,
+           outstanding_after_payment = $2,
+           status = $3
+       WHERE id = $4`,
+      [newPaid, newOutstanding, newStatus, salaryRecord.id]
+    );
+
+    await client.query('COMMIT');
+
+    // Emit real-time update via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('teacher:salary:paid', { teacher_id, billing_month_id, payment });
+      io.emit('reports:updated');
+    }
+
+    res.status(201).json({
+      payment,
+      salary_record: {
+        ...salaryRecord,
+        amount_paid_this_month: newPaid,
+        outstanding_after_payment: newOutstanding,
+        status: newStatus
+      },
+      message: currentStatus === 'partial' 
+        ? 'Remaining balance paid. Salary marked as fully paid.' 
+        : 'Salary marked as fully paid.'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Quick pay teacher salary error:', error);
+    res.status(500).json({ error: 'Failed to process salary payment' });
+  } finally {
+    client.release();
+  }
+});
+
 // Get salary summary for dashboard
 router.get('/summary', authenticateToken, async (req, res) => {
   try {

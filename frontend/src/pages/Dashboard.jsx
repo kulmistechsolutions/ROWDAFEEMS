@@ -20,16 +20,19 @@ export default function Dashboard() {
   const [trend, setTrend] = useState([])
   const [distribution, setDistribution] = useState([])
   const [selectedMonth, setSelectedMonth] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchData()
-  }, [selectedMonth])
+  }, [selectedMonth, branchFilter])
 
   const fetchData = async () => {
     try {
       setLoading(true)
-      const params = selectedMonth ? { month: selectedMonth } : {}
+      const params = {}
+      if (selectedMonth) params.month = selectedMonth
+      if (branchFilter !== 'all') params.branch = branchFilter
       
       // Fetch parent fees summary
       const summaryResponse = await api.get('/reports/summary', { params })
@@ -141,13 +144,22 @@ export default function Dashboard() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">Overview of fee collection and payments</p>
         </div>
-        <div className="w-full sm:w-auto flex-shrink-0">
+        <div className="w-full sm:w-auto flex-shrink-0 flex gap-2">
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="input w-full sm:w-48"
           />
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="input w-full sm:w-48"
+          >
+            <option value="all">All Branches</option>
+            <option value="Branch 1">Branch 1</option>
+            <option value="Branch 2">Branch 2</option>
+          </select>
         </div>
       </div>
 
