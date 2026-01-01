@@ -131,20 +131,22 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
       let outstandingAfterPayment = 0;
       let finalAdvanceMonthsRemaining = 0;
 
-      // Check if parent has active advance payment that covers this month
+      // CRITICAL FIX: Check if parent has active advance payment that covers this month
+      // Check advance_payments.months_remaining (NOT previous month's advance_months_remaining)
       if (advance && advance.months_remaining > 0) {
-        // Advance payment covers this month - month is already paid
-        // Do NOT charge the parent again for this month
-        totalDue = 0;
+        // Advance payment covers this month - month is already prepaid
+        // Rule: A prepaid (advanced) month must never be charged again
+        // Mark the month as PAID (Advance Applied) with $0 charge
+        totalDue = 0; // Do NOT create a payable charge
         amountPaid = parseFloat(parent.monthly_fee_amount); // Mark as paid via advance
-        outstandingAfterPayment = 0;
+        outstandingAfterPayment = 0; // No outstanding (month is paid)
         status = 'paid'; // Mark as paid (advance applied)
-        carriedForward = 0; // Do NOT carry forward when advance covers
-        finalAdvanceMonthsRemaining = advance.months_remaining - 1;
-        advanceUpdateIds.push(advance.id);
+        carriedForward = 0; // Do NOT carry forward when advance covers (advance is for future, not past debts)
+        finalAdvanceMonthsRemaining = advance.months_remaining - 1; // Decrement advance months
+        advanceUpdateIds.push(advance.id); // Track for batch update
       } else {
         // No advance or advance exhausted - use normal logic (partial/unpaid)
-        // Add carried forward to total due
+        // Preserve existing behavior: carry forward previous month's outstanding
         totalDue = parseFloat(parent.monthly_fee_amount) + carriedForward;
         amountPaid = 0;
         outstandingAfterPayment = totalDue;
