@@ -95,22 +95,31 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
       });
     }
 
-    // OPTIMIZATION: Batch fetch all advance payments at once
+    // OPTIMIZATION: Batch fetch all advance payments and calculate advance_balance for each parent
     const parentIds = parentsResult.rows.map(p => p.id);
     const allAdvancePayments = await client.query(
       'SELECT parent_id, months_remaining, amount_per_month, id FROM advance_payments WHERE parent_id = ANY($1) AND months_remaining > 0 ORDER BY parent_id, created_at ASC',
       [parentIds]
     );
-    const advancePaymentsMap = {};
+    
+    // Calculate advance_balance for each parent (SUM of amount_per_month * months_remaining)
+    const advanceBalanceMap = {};
+    const advancePaymentsByParent = {};
     allAdvancePayments.rows.forEach(advance => {
-      if (!advancePaymentsMap[advance.parent_id]) {
-        advancePaymentsMap[advance.parent_id] = advance;
+      const parentId = advance.parent_id;
+      if (!advanceBalanceMap[parentId]) {
+        advanceBalanceMap[parentId] = 0;
+        advancePaymentsByParent[parentId] = [];
       }
+      const balance = parseFloat(advance.amount_per_month) * parseInt(advance.months_remaining);
+      advanceBalanceMap[parentId] += balance;
+      advancePaymentsByParent[parentId].push(advance);
     });
 
     // Prepare batch insert data
     const feeInsertValues = [];
-    const advanceUpdateIds = [];
+    const advanceUpdateIdsFull = []; // For full month consumption (decrement by 1)
+    const advanceUpdateIdsPartial = []; // For partial consumption (set to 0)
 
     for (const parent of parentsResult.rows) {
       let carriedForward = 0;
@@ -123,31 +132,57 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
         advanceMonthsRemaining = parseInt(prevFee.advance_months_remaining || 0);
       }
 
-      // Get advance payment from map (from advance_payments table)
-      const advance = advancePaymentsMap[parent.id];
-      let totalDue = parent.monthly_fee_amount;
+      // Calculate advance_balance from advance_payments table
+      const advanceBalance = advanceBalanceMap[parent.id] || 0;
+      const monthlyFee = parseFloat(parent.monthly_fee_amount);
+      let totalDue = monthlyFee;
       let status = 'unpaid';
       let amountPaid = 0;
       let outstandingAfterPayment = 0;
       let finalAdvanceMonthsRemaining = 0;
+      let advanceToApply = 0;
 
-      // CRITICAL FIX: Check if parent has active advance payment that covers this month
-      // Check advance_payments.months_remaining (NOT previous month's advance_months_remaining)
-      if (advance && advance.months_remaining > 0) {
-        // Advance payment covers this month - month is already prepaid
-        // Rule: A prepaid (advanced) month must never be charged again
-        // Mark the month as PAID (Advance Applied) with $0 charge
+      // CRITICAL FIX: Apply advance_balance during month setup
+      if (advanceBalance >= monthlyFee) {
+        // Case 1: advance_balance >= monthly_fee - Mark as PAID (Advance Applied)
         totalDue = 0; // Do NOT create a payable charge
-        amountPaid = parseFloat(parent.monthly_fee_amount); // Mark as paid via advance
+        amountPaid = monthlyFee; // Mark as paid via advance
         outstandingAfterPayment = 0; // No outstanding (month is paid)
         status = 'paid'; // Mark as paid (advance applied)
         carriedForward = 0; // Do NOT carry forward when advance covers (advance is for future, not past debts)
-        finalAdvanceMonthsRemaining = advance.months_remaining - 1; // Decrement advance months
-        advanceUpdateIds.push(advance.id); // Track for batch update
+        advanceToApply = monthlyFee; // Amount to deduct from advance balance
+        
+        // Track advance payments that need to be decremented (consume one month)
+        // We'll consume from the oldest advance payment first (FIFO)
+        // Consume exactly one month from the first available advance payment
+        if (advancePaymentsByParent[parent.id] && advancePaymentsByParent[parent.id].length > 0) {
+          const firstAdvance = advancePaymentsByParent[parent.id][0];
+          if (firstAdvance.months_remaining > 0) {
+            // Consume one month from the first (oldest) advance payment
+            advanceUpdateIdsFull.push(firstAdvance.id);
+            finalAdvanceMonthsRemaining = firstAdvance.months_remaining - 1;
+          }
+        }
+      } else if (advanceBalance > 0 && advanceBalance < monthlyFee) {
+        // Case 2: advance_balance < monthly_fee AND > 0 - Apply partial advance
+        advanceToApply = advanceBalance;
+        amountPaid = advanceBalance; // Apply the advance
+        totalDue = monthlyFee - advanceBalance; // Charge only remaining balance
+        outstandingAfterPayment = totalDue; // Remaining to pay
+        status = 'partial'; // Mark as partial (some advance applied, some still due)
+        carriedForward = 0; // No carry forward when applying advance
+        finalAdvanceMonthsRemaining = 0; // All advance consumed
+        
+        // Consume all remaining advance (set months_remaining to 0 for all)
+        if (advancePaymentsByParent[parent.id]) {
+          for (const advance of advancePaymentsByParent[parent.id]) {
+            advanceUpdateIdsPartial.push(advance.id);
+          }
+        }
       } else {
-        // No advance or advance exhausted - use normal logic (partial/unpaid)
+        // Case 3: advance_balance = 0 - Use normal logic (partial/unpaid)
         // Preserve existing behavior: carry forward previous month's outstanding
-        totalDue = parseFloat(parent.monthly_fee_amount) + carriedForward;
+        totalDue = monthlyFee + carriedForward;
         amountPaid = 0;
         outstandingAfterPayment = totalDue;
         finalAdvanceMonthsRemaining = 0;
@@ -167,11 +202,19 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
       ]);
     }
 
-    // Batch update advance payments (only if any need updating)
-    if (advanceUpdateIds.length > 0) {
+    // Batch update advance payments
+    // Full consumption: decrement months_remaining by 1 (one month consumed)
+    if (advanceUpdateIdsFull.length > 0) {
       await client.query(
         'UPDATE advance_payments SET months_remaining = months_remaining - 1 WHERE id = ANY($1)',
-        [advanceUpdateIds]
+        [advanceUpdateIdsFull]
+      );
+    }
+    // Partial consumption: set months_remaining to 0 (all advance consumed)
+    if (advanceUpdateIdsPartial.length > 0) {
+      await client.query(
+        'UPDATE advance_payments SET months_remaining = 0 WHERE id = ANY($1)',
+        [advanceUpdateIdsPartial]
       );
     }
 
