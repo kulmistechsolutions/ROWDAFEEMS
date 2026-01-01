@@ -188,6 +188,14 @@ router.post('/', authenticateToken, async (req, res) => {
           [parent_id, payment.id, months_advance, parent.monthly_fee_amount]
         );
       }
+      
+      // CRITICAL: Increase advance_balance in parents table
+      // Advance amount = months_advance * monthly_fee_amount
+      const advanceAmount = parseFloat(amount);
+      await client.query(
+        'UPDATE parents SET advance_balance = COALESCE(advance_balance, 0) + $1 WHERE id = $2',
+        [advanceAmount, parent_id]
+      );
     } else {
       // Split payment: monthly fee and carried forward
       const feeMonthlyFee = parseFloat(fee.monthly_fee || 0);

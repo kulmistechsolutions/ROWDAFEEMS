@@ -95,24 +95,20 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
       });
     }
 
-    // OPTIMIZATION: Batch fetch all advance payments and calculate advance_balance for each parent
+    // OPTIMIZATION: Batch fetch all advance payments for tracking (still needed for months_remaining updates)
     const parentIds = parentsResult.rows.map(p => p.id);
     const allAdvancePayments = await client.query(
       'SELECT parent_id, months_remaining, amount_per_month, id FROM advance_payments WHERE parent_id = ANY($1) AND months_remaining > 0 ORDER BY parent_id, created_at ASC',
       [parentIds]
     );
     
-    // Calculate advance_balance for each parent (SUM of amount_per_month * months_remaining)
-    const advanceBalanceMap = {};
+    // Group advance payments by parent (for months_remaining updates)
     const advancePaymentsByParent = {};
     allAdvancePayments.rows.forEach(advance => {
       const parentId = advance.parent_id;
-      if (!advanceBalanceMap[parentId]) {
-        advanceBalanceMap[parentId] = 0;
+      if (!advancePaymentsByParent[parentId]) {
         advancePaymentsByParent[parentId] = [];
       }
-      const balance = parseFloat(advance.amount_per_month) * parseInt(advance.months_remaining);
-      advanceBalanceMap[parentId] += balance;
       advancePaymentsByParent[parentId].push(advance);
     });
 
@@ -120,6 +116,7 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
     const feeInsertValues = [];
     const advanceUpdateIdsFull = []; // For full month consumption (decrement by 1)
     const advanceUpdateIdsPartial = []; // For partial consumption (set to 0)
+    const advanceBalanceUpdates = []; // Track parents whose advance_balance needs updating
 
     for (const parent of parentsResult.rows) {
       let carriedForward = 0;
@@ -132,8 +129,8 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
         advanceMonthsRemaining = parseInt(prevFee.advance_months_remaining || 0);
       }
 
-      // Calculate advance_balance from advance_payments table
-      const advanceBalance = advanceBalanceMap[parent.id] || 0;
+      // Get advance_balance directly from parents table (maintained field)
+      const advanceBalance = parseFloat(parent.advance_balance || 0);
       const monthlyFee = parseFloat(parent.monthly_fee_amount);
       let totalDue = monthlyFee;
       let status = 'unpaid';
@@ -152,9 +149,11 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
         carriedForward = 0; // Do NOT carry forward when advance covers (advance is for future, not past debts)
         advanceToApply = monthlyFee; // Amount to deduct from advance balance
         
+        // Deduct monthly_fee from advance_balance
+        advanceBalanceUpdates.push({ parentId: parent.id, deduction: monthlyFee });
+        
         // Track advance payments that need to be decremented (consume one month)
         // We'll consume from the oldest advance payment first (FIFO)
-        // Consume exactly one month from the first available advance payment
         if (advancePaymentsByParent[parent.id] && advancePaymentsByParent[parent.id].length > 0) {
           const firstAdvance = advancePaymentsByParent[parent.id][0];
           if (firstAdvance.months_remaining > 0) {
@@ -172,6 +171,9 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
         status = 'partial'; // Mark as partial (some advance applied, some still due)
         carriedForward = 0; // No carry forward when applying advance
         finalAdvanceMonthsRemaining = 0; // All advance consumed
+        
+        // Deduct all advance_balance (set to 0)
+        advanceBalanceUpdates.push({ parentId: parent.id, deduction: advanceBalance });
         
         // Consume all remaining advance (set months_remaining to 0 for all)
         if (advancePaymentsByParent[parent.id]) {
@@ -202,7 +204,15 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
       ]);
     }
 
-    // Batch update advance payments
+    // Batch update advance_balance in parents table (deduct consumed advance)
+    for (const update of advanceBalanceUpdates) {
+      await client.query(
+        'UPDATE parents SET advance_balance = GREATEST(0, advance_balance - $1) WHERE id = $2',
+        [update.deduction, update.parentId]
+      );
+    }
+    
+    // Batch update advance payments (for months_remaining tracking)
     // Full consumption: decrement months_remaining by 1 (one month consumed)
     if (advanceUpdateIdsFull.length > 0) {
       await client.query(

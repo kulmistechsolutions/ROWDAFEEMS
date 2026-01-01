@@ -12,7 +12,8 @@
     "check-env": "node scripts/check-env.js",
     "migrate-teacher-expenses": "node scripts/migrate-teacher-expenses.js",
     "migrate-branch": "node scripts/run-migration-branch.js",
-    "migrate-branch-production": "node scripts/run-migration-production.js"
+    "migrate-branch-production": "node scripts/run-migration-production.js",
+    "migrate-advance-balance": "node scripts/run-advance-balance-migration.js"
   },
   "dependencies": {
     "express": "^4.18.2",
