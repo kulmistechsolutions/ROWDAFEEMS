@@ -123,20 +123,32 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
         advanceMonthsRemaining = parseInt(prevFee.advance_months_remaining || 0);
       }
 
-      // Get advance payment from map
+      // Get advance payment from map (from advance_payments table)
       const advance = advancePaymentsMap[parent.id];
       let totalDue = parent.monthly_fee_amount;
       let status = 'unpaid';
+      let amountPaid = 0;
+      let outstandingAfterPayment = 0;
+      let finalAdvanceMonthsRemaining = 0;
 
-      // If parent has advance payment, reduce due amount
-      if (advance && advanceMonthsRemaining > 0) {
-        // Advance payment covers this month
+      // Check if parent has active advance payment that covers this month
+      if (advance && advance.months_remaining > 0) {
+        // Advance payment covers this month - month is already paid
+        // Do NOT charge the parent again for this month
         totalDue = 0;
-        status = 'advanced';
+        amountPaid = parseFloat(parent.monthly_fee_amount); // Mark as paid via advance
+        outstandingAfterPayment = 0;
+        status = 'paid'; // Mark as paid (advance applied)
+        carriedForward = 0; // Do NOT carry forward when advance covers
+        finalAdvanceMonthsRemaining = advance.months_remaining - 1;
         advanceUpdateIds.push(advance.id);
       } else {
+        // No advance or advance exhausted - use normal logic (partial/unpaid)
         // Add carried forward to total due
-        totalDue = parent.monthly_fee_amount + carriedForward;
+        totalDue = parseFloat(parent.monthly_fee_amount) + carriedForward;
+        amountPaid = 0;
+        outstandingAfterPayment = totalDue;
+        finalAdvanceMonthsRemaining = 0;
       }
 
       // Prepare insert values for batch insert
@@ -146,10 +158,10 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
         parent.monthly_fee_amount,
         carriedForward,
         totalDue,
-        0, // amount_paid_this_month
-        totalDue, // outstanding_after_payment
+        amountPaid,
+        outstandingAfterPayment,
         status,
-        advanceMonthsRemaining > 0 ? advanceMonthsRemaining - (advance && advanceMonthsRemaining > 0 ? 1 : 0) : 0
+        finalAdvanceMonthsRemaining
       ]);
     }
 
@@ -443,8 +455,8 @@ router.get('/:monthId/fees', authenticateToken, async (req, res) => {
         // Outstanding: has outstanding balance > 0
         query += ` AND pmf.outstanding_after_payment > 0`;
       } else {
-        query += ` AND pmf.status = $${params.length + 1}`;
-        params.push(status);
+      query += ` AND pmf.status = $${params.length + 1}`;
+      params.push(status);
       }
     }
 

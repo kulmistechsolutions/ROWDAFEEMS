@@ -36,8 +36,8 @@ router.get('/month/:monthId', authenticateToken, async (req, res) => {
         query += ` AND tsr.status = $${params.length + 1}`;
         params.push('advance_applied');
       } else {
-        query += ` AND tsr.status = $${params.length + 1}`;
-        params.push(status);
+      query += ` AND tsr.status = $${params.length + 1}`;
+      params.push(status);
       }
     }
 
@@ -99,11 +99,11 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
     // Get current salary record
     let salaryRecord = null;
     let salaryResult = await client.query(
-      'SELECT * FROM teacher_salary_records WHERE teacher_id = $1 AND billing_month_id = $2',
-      [teacher_id, billing_month_id]
-    );
+        'SELECT * FROM teacher_salary_records WHERE teacher_id = $1 AND billing_month_id = $2',
+        [teacher_id, billing_month_id]
+      );
 
-    if (salaryResult.rows.length === 0) {
+      if (salaryResult.rows.length === 0) {
       // Create a salary record if it doesn't exist (for advance payments)
       if (payment_type === 'advance') {
         const insertResult = await client.query(
@@ -116,9 +116,9 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Salary record not found for this month. Please set up the month first.' });
       }
-    } else {
-      salaryRecord = salaryResult.rows[0];
-    }
+      } else {
+        salaryRecord = salaryResult.rows[0];
+      }
 
     const currentStatus = salaryRecord.status;
     const currentOutstanding = parseFloat(salaryRecord.outstanding_after_payment || 0);
@@ -148,7 +148,7 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
       if (currentStatus === 'paid') {
         newStatus = 'paid'; // Stay paid, advance is separate
       } else {
-        newStatus = 'advanced';
+      newStatus = 'advanced';
       }
     } else if (payment_type === 'partial') {
       // Partial payment - complete remaining or partial amount
@@ -184,10 +184,10 @@ router.post('/pay', authenticateToken, requireAdmin, async (req, res) => {
         newStatus = 'paid'; // Status remains paid
       } else {
         // Normal full payment
-        paymentType = 'normal';
-        newPaid = parseFloat(salaryRecord.total_due_this_month);
-        newOutstanding = 0;
-        newStatus = 'paid';
+      paymentType = 'normal';
+      newPaid = parseFloat(salaryRecord.total_due_this_month);
+      newOutstanding = 0;
+      newStatus = 'paid';
       }
     }
 

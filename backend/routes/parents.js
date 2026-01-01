@@ -542,15 +542,15 @@ router.post('/import', authenticateToken, upload.single('file'), async (req, res
           );
         } else {
           result = await pool.query(
-            `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (phone_number) DO UPDATE
-             SET parent_name = EXCLUDED.parent_name,
-                 number_of_children = EXCLUDED.number_of_children,
-                 monthly_fee_amount = EXCLUDED.monthly_fee_amount
-             RETURNING *`,
-            [parent_name, phone_number, number_of_children, monthly_fee_amount]
-          );
+          `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (phone_number) DO UPDATE
+           SET parent_name = EXCLUDED.parent_name,
+               number_of_children = EXCLUDED.number_of_children,
+               monthly_fee_amount = EXCLUDED.monthly_fee_amount
+           RETURNING *`,
+          [parent_name, phone_number, number_of_children, monthly_fee_amount]
+        );
         }
 
         imported.push(result.rows[0]);
@@ -625,10 +625,10 @@ router.post('/', authenticateToken, async (req, res) => {
       );
     } else {
       result = await pool.query(
-        `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [parent_name, phone_number, number_of_children || 1, monthly_fee_amount]
-      );
+      `INSERT INTO parents (parent_name, phone_number, number_of_children, monthly_fee_amount)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [parent_name, phone_number, number_of_children || 1, monthly_fee_amount]
+    );
     }
 
     // Emit real-time update via Socket.io

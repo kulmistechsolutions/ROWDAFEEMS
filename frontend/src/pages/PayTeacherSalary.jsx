@@ -405,15 +405,15 @@ export default function PayTeacherSalary() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <button
-                          onClick={() => handlePayClick(record)}
-                          className="btn btn-primary text-sm"
+                          <button
+                            onClick={() => handlePayClick(record)}
+                            className="btn btn-primary text-sm"
                           disabled={loading}
                           title={record.status === 'paid' ? 'Give Advance Payment' : 'Pay Salary'}
-                        >
+                          >
                           <CurrencyDollarIcon className="h-4 w-4 mr-1 inline" />
-                          Pay
-                        </button>
+                            Pay
+                          </button>
                       </td>
                     </tr>
                   ))}
@@ -473,15 +473,15 @@ export default function PayTeacherSalary() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handlePayClick(record)}
-                  className="btn btn-primary w-full text-sm"
+                  <button
+                    onClick={() => handlePayClick(record)}
+                    className="btn btn-primary w-full text-sm"
                   disabled={loading}
                   title={record.status === 'paid' ? 'Give Advance Payment' : 'Pay Salary'}
-                >
-                  <CurrencyDollarIcon className="h-4 w-4 mr-2" />
+                  >
+                    <CurrencyDollarIcon className="h-4 w-4 mr-2" />
                   Pay
-                </button>
+                  </button>
               </div>
             ))
           )}

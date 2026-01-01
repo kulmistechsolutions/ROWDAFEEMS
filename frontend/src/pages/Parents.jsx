@@ -535,8 +535,8 @@ export default function Parents() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(parent.current_month_status)}`}>
-                    {parent.current_month_status || 'N/A'}
-                  </span>
+                  {parent.current_month_status || 'N/A'}
+                </span>
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                     (parent.student_status || 'active') === 'active' 
                       ? 'bg-green-100 text-green-800' 
