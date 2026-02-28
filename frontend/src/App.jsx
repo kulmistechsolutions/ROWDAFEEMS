@@ -18,6 +18,7 @@ import TeacherProfile from './pages/TeacherProfile'
 import Expenses from './pages/Expenses'
 import UserMonitoring from './pages/UserMonitoring'
 import Layout from './components/Layout'
+import PWAInstallPrompt from './components/PWAInstallPrompt'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -92,6 +93,7 @@ function App() {
       <SocketProvider>
         <Router>
           <AppRoutes />
+          <PWAInstallPrompt />
           <Toaster position="top-right" />
         </Router>
       </SocketProvider>

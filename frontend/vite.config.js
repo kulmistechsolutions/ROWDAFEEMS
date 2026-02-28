@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: { enabled: true },
       includeAssets: ['logo.jpeg'],
       manifest: {
         name: 'Rowdatul Iimaan Fee Management System',
