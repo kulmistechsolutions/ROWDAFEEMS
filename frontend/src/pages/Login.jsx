@@ -31,7 +31,16 @@ export default function Login() {
       } else if (error.response?.status === 405) {
         toast.error('Server configuration error. Please contact administrator.')
       } else if (!error.response) {
-        toast.error('Cannot connect to server. Please check your connection or contact administrator.')
+        const isTimeout = error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')
+        const isNetwork = error.message === 'Network Error' || error.code === 'ERR_NETWORK'
+        if (isTimeout || isNetwork) {
+          toast.error(
+            'Cannot reach the server (connection timed out). If the backend is on a free host (e.g. Render), it may be starting up—wait 1–2 minutes and try again, or run the backend locally.',
+            { duration: 8000 }
+          )
+        } else {
+          toast.error('Cannot connect to server. Check your connection or contact the administrator.')
+        }
       } else if (error.response?.data?.error) {
         toast.error(error.response.data.error)
       } else {

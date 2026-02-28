@@ -32,7 +32,8 @@ const apiClient = axios.create({
   baseURL: apiBaseURL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 20000 // 20 seconds - fail fast so user sees error instead of endless loading
 })
 
 // Debug: Log the configured base URL
