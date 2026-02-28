@@ -15,6 +15,7 @@ import {
   DocumentTextIcon,
   PresentationChartLineIcon
 } from '@heroicons/react/24/outline'
+import InstallAppButton from './InstallAppButton'
 
 // All navigation items with role requirements
 const allNavigation = [
@@ -130,6 +131,14 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
               )
             })}
           </nav>
+
+          {/* Install app - always visible when not already installed */}
+          <div className="px-2 pb-2">
+            <InstallAppButton
+              className={`w-full justify-center py-2.5 ${collapsed ? 'md:px-2' : 'px-3'}`}
+              showLabel={!collapsed}
+            />
+          </div>
 
           {/* Footer */}
           {!collapsed && (

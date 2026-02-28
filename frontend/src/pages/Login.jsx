@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
+import InstallAppButton from '../components/InstallAppButton'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -53,6 +54,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-secondary-50 py-8 px-4 sm:px-6 lg:px-8">
+      {/* Install app - visible on login page too */}
+      <div className="absolute top-4 right-4">
+        <InstallAppButton className="px-3 py-2 rounded-lg border border-gray-200 bg-white/90 shadow-sm" />
+      </div>
       <div className="max-w-md w-full space-y-6 sm:space-y-8">
         <div className="text-center">
           <div className="flex justify-center mb-4 sm:mb-6">

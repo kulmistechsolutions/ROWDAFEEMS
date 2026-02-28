@@ -19,6 +19,7 @@ import Expenses from './pages/Expenses'
 import UserMonitoring from './pages/UserMonitoring'
 import Layout from './components/Layout'
 import PWAInstallPrompt from './components/PWAInstallPrompt'
+import { PWAInstallProvider } from './contexts/PWAInstallContext'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -90,13 +91,15 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <SocketProvider>
-        <Router>
-          <AppRoutes />
-          <PWAInstallPrompt />
-          <Toaster position="top-right" />
-        </Router>
-      </SocketProvider>
+      <PWAInstallProvider>
+        <SocketProvider>
+          <Router>
+            <AppRoutes />
+            <PWAInstallPrompt />
+            <Toaster position="top-right" />
+          </Router>
+        </SocketProvider>
+      </PWAInstallProvider>
     </AuthProvider>
   )
 }
