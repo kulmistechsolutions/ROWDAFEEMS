@@ -317,13 +317,16 @@ router.post('/setup', authenticateToken, requireAdmin, async (req, res) => {
             // Advance covers full salary
             advanceBalanceUsed = teacher.monthly_salary;
             totalDue = previousOutstanding; // Only previous outstanding remains
-            status = previousOutstanding > 0 ? 'advance_applied' : 'advance_covered';
+            // Use schema-safe statuses to support deployments where
+            // teacher_salary_records_status_check doesn't include 'advance_applied' yet.
+            status = previousOutstanding > 0 ? 'partial' : 'advance_covered';
             teacherAdvanceUpdateIds.push(teacherAdvance.id);
           } else {
             // Partial advance - reduce salary by advance amount
             advanceBalanceUsed = advanceAmountPerMonth;
             totalDue = teacher.monthly_salary - advanceAmountPerMonth + previousOutstanding;
-            status = totalDue === 0 ? 'advance_covered' : 'advance_applied';
+            // Keep within the base constraint values across environments.
+            status = totalDue === 0 ? 'advance_covered' : 'partial';
             teacherAdvanceUpdateIds.push(teacherAdvance.id);
           }
         }
